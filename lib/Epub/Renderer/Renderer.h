@@ -4,6 +4,10 @@
 
 class ImageHelper;
 
+#ifdef USE_FREETYPE
+class FreeTypeFont;
+#endif
+
 #define MAX_WORD_LENGTH 100
 
 class Renderer
@@ -19,9 +23,11 @@ protected:
   int margin_bottom = 0;
   int margin_left = 0;
   int margin_right = 0;
+  bool image_placeholder_enabled = true;
 
 public:
   virtual ~Renderer();
+  void set_image_placeholder_enabled(bool enabled) { image_placeholder_enabled = enabled; }
   virtual void draw_image(const std::string &filename, const uint8_t *data, size_t data_size, int x, int y, int width, int height);
   virtual bool get_image_size(const std::string &filename, const uint8_t *data, size_t data_size, int *width, int *height);
   virtual void draw_pixel(int x, int y, uint8_t color) = 0;
@@ -43,6 +49,19 @@ public:
   virtual void flush_display(){};
   virtual void flush_area(int x, int y, int width, int height){};
 
+#ifdef USE_FREETYPE
+  // Optional hooks for FreeType-backed rendering. Default
+  // implementations are no-ops so non-FreeType renderers or builds
+  // continue to behave as before.
+  virtual void set_freetype_font_for_reading(FreeTypeFont *font) {}
+  virtual void set_freetype_enabled(bool enabled) {}
+
+  // Optional accessors for the FreeType-backed reading font size so
+  // that callers (e.g. TOC or menus) can temporarily adjust it.
+  virtual int get_reading_font_pixel_height() const { return 0; }
+  virtual bool set_reading_font_pixel_height(int /*pixel_height*/) { return false; }
+#endif
+
   virtual int get_page_width() = 0;
   virtual int get_page_height() = 0;
   virtual int get_space_width() = 0;
@@ -59,5 +78,7 @@ public:
   // really really clear the screen
   virtual void reset(){};
 
+  // Default operating temperature (deg C) used by epdiy waveform selection on
+  // Paper S3. This can be overridden by board-specific code if needed.
   uint8_t temperature = 20;
 };

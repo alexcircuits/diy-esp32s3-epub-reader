@@ -3,7 +3,10 @@
 
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
-idf_component_register(SRCS ${app_sources})
+# The main application component depends on the epdiy component so that
+# headers like <epdiy.h> and "epd_board.h" from components/epdiy/src are
+# available to sources under src/.
+idf_component_register(SRCS ${app_sources} REQUIRES epdiy)
 
 # 1. The ULP app name must be unique (if multiple components use ULP).
 set(ulp_app_name ulp_main)

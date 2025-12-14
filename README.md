@@ -2,6 +2,12 @@
 
 # ESP32 Based ePub Reader
 
+This repository is a fork of:
+
+https://github.com/atomic14/diy-esp32-epub-reader
+
+The focus of this fork is a working port for the **M5Stack Paper S3**.
+
 ![3 supported environments](docs/diy-main-image.jpg)
 Above the 3 supported environments. You can watch a video of the build [here](https://youtu.be/VLiCgB0odOQ)
 
@@ -15,6 +21,29 @@ And here it is running on the M5Paper:
 
 What is it? It's a DIY ePub reader for the ESP32.
 
+## Paper S3 focused build
+
+This repository and the `paper_s3_idf` environment are now focused on the
+M5Stack Paper S3 board:
+
+- Display: 4.7" 960x540 e-paper panel driven by epdiy, rendered in inverted
+  portrait mode (logical page size 540x960).
+- Touch: GT911 controller reporting a 540x960 coordinate space which is mapped
+  directly onto the logical page.
+- Storage: SD card mounted at `/fs`, with EPUB files loaded from `/fs/Books`.
+- Temperature: epdiy is driven with a fixed default temperature of 20°C
+  (configurable in code if needed).
+
+Additional Paper S3 specifics in this fork:
+
+- **Firmware build targets**: `paper_s3_idf` (debug) and `paper_s3_release` (release).
+- **Touch**: GT911 touch controller mapping to the same logical 540x960 page space.
+- **Fonts**: optional TTF font support via `/fonts/reader.ttf` on the SD card.
+
+Other environments and boards from the original project are no longer
+maintained in this configuration; the goal is a dedicated, optimized Paper S3
+e-reader firmware.
+
 It will parse ePub files that can be downloaded from places such as [Project Gutenberg](https://www.gutenberg.org/).
 
 It has limited support for formating - the CSS content of the ePub file is not parsed, so we just use the standard [HTML tags](https://www.scaler.com/topics/html/html-tags/) such as `<h1>`,`<h2>` etc.. and `<b>` and `<i>`.
@@ -24,6 +53,8 @@ I've only included 4 font styles - regular, bold, italic and bold-italic. I've a
 # Building and Flashing
 
 This project uses PlatformIO to build and flash. You will need VSCode with the PlatformIO extension installed.
+
+This project uses **git submodules**. Make sure your clone includes them.
 
 There are several environments configured in platformio.ini. If you click on the PlatformIO logo in the left hand navigation of VSCode, you will see a list of Project Tasks - you can pick the environment you want and then `Upload`.
 
@@ -44,8 +75,30 @@ And if you find bugs, feel free to report (or better yet, fix!) them :)
 Make sure you clone recursively - the code uses git submodules.
 
 ```
-git clone --recursive git@github.com:atomic14/esp32-ereader.git
+git clone --recursive https://github.com/juicecultus/diy-esp32s3-epub-reader.git
 ```
+
+If you already cloned without submodules:
+
+```
+git submodule update --init --recursive
+```
+
+# Paper S3 prerequisites / notes
+
+- The Paper S3 build uses the ESP-IDF framework via PlatformIO.
+- FreeType support is enabled for the Paper S3 environments and this fork includes a prebuilt `lib_freetype` static library.
+- To use a custom font, place a TTF at:
+
+```
+/fonts/reader.ttf
+```
+
+on the SD card.
+
+For device setup, SD card layout, and usage instructions, see:
+
+`docs/USER_GUIDE_PAPER_S3.md`
 
 # What boards does it work on?
 

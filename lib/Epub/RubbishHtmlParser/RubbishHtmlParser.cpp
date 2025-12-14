@@ -12,7 +12,9 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <functional>
 #include <exception>
+#include <ctype.h>
 #include "../ZipFile/ZipFile.h"
 #include "../Renderer/Renderer.h"
 #include "htmlEntities.h"
@@ -30,10 +32,10 @@ const int NUM_HEADER_TAGS = sizeof(HEADER_TAGS) / sizeof(HEADER_TAGS[0]);
 const char *BLOCK_TAGS[] = {"p", "li", "div", "br"};
 const int NUM_BLOCK_TAGS = sizeof(BLOCK_TAGS) / sizeof(BLOCK_TAGS[0]);
 
-const char *BOLD_TAGS[] = {"b"};
+const char *BOLD_TAGS[] = {"b", "strong"};
 const int NUM_BOLD_TAGS = sizeof(BOLD_TAGS) / sizeof(BOLD_TAGS[0]);
 
-const char *ITALIC_TAGS[] = {"i"};
+const char *ITALIC_TAGS[] = {"i", "em"};
 const int NUM_ITALIC_TAGS = sizeof(ITALIC_TAGS) / sizeof(ITALIC_TAGS[0]);
 
 const char *IMAGE_TAGS[] = {"img"};
@@ -55,7 +57,66 @@ bool matches(const char *tag_name, const char *possible_tags[], int possible_tag
   return false;
 }
 
-RubbishHtmlParser::RubbishHtmlParser(const char *html, int length, const std::string &base_path)
+BLOCK_STYLE parse_text_align_from_style(const char *style_attr, BLOCK_STYLE default_style, bool treat_justify_as_justified)
+{
+  if (!style_attr)
+  {
+    return default_style;
+  }
+  std::string s(style_attr);
+  for (size_t i = 0; i < s.size(); i++)
+  {
+    s[i] = tolower(static_cast<unsigned char>(s[i]));
+  }
+  size_t pos = s.find("text-align");
+  if (pos == std::string::npos)
+  {
+    return default_style;
+  }
+  size_t colon = s.find(':', pos);
+  if (colon == std::string::npos)
+  {
+    return default_style;
+  }
+  size_t start = colon + 1;
+  while (start < s.size() && (s[start] == ' ' || s[start] == '\t'))
+  {
+    start++;
+  }
+  size_t end = start;
+  while (end < s.size() && s[end] != ';')
+  {
+    end++;
+  }
+  std::string value = s.substr(start, end - start);
+  while (!value.empty() && (value.back() == ' ' || value.back() == '\t'))
+  {
+    value.pop_back();
+  }
+  if (value == "left")
+  {
+    return LEFT_ALIGN;
+  }
+  if (value == "center")
+  {
+    return CENTER_ALIGN;
+  }
+  if (value == "right")
+  {
+    return RIGHT_ALIGN;
+  }
+  if (value == "justify")
+  {
+    // Map fully-justified paragraphs to left-align by default to
+    // avoid overly large gaps between words, unless the caller has
+    // explicitly requested justification.
+    return treat_justify_as_justified ? JUSTIFIED : LEFT_ALIGN;
+  }
+  return default_style;
+}
+
+RubbishHtmlParser::RubbishHtmlParser(const char *html, int length, const std::string &base_path, bool justify_paragraphs)
+    : m_justify_paragraphs(justify_paragraphs)
 {
   m_base_path = base_path;
   parse(html, length);
@@ -69,13 +130,13 @@ RubbishHtmlParser::~RubbishHtmlParser()
   }
 }
 
-bool RubbishHtmlParser::VisitEnter(const tinyxml2::XMLElement &element, const tinyxml2::XMLAttribute *firstAttribute)
+bool RubbishHtmlParser::enter_node(const pugi::xml_node &element)
 {
-  const char *tag_name = element.Name();
+  const char *tag_name = element.name();
   // we only handle image tags
   if (matches(tag_name, IMAGE_TAGS, NUM_IMAGE_TAGS))
   {
-    const char *src = element.Attribute("src");
+    const char *src = element.attribute("src").value();
     if (src)
     {
       // don't leave an empty text block in the list
@@ -108,11 +169,22 @@ bool RubbishHtmlParser::VisitEnter(const tinyxml2::XMLElement &element, const ti
   {
     if (strcmp(tag_name, "br") == 0)
     {
-      startNewTextBlock(currentTextBlock->get_style());
+      BLOCK_STYLE style = JUSTIFIED;
+      if (currentTextBlock)
+      {
+        style = currentTextBlock->get_style();
+      }
+      startNewTextBlock(style);
     }
     else
     {
-      startNewTextBlock(JUSTIFIED);
+      // Default to either left-aligned or fully-justified paragraphs
+      // depending on the reader setting, but still honour explicit
+      // CSS text-align where present.
+      BLOCK_STYLE default_style = m_justify_paragraphs ? JUSTIFIED : LEFT_ALIGN;
+      const char *style_attr = element.attribute("style").value();
+      BLOCK_STYLE style = parse_text_align_from_style(style_attr, default_style, m_justify_paragraphs);
+      startNewTextBlock(style);
     }
   }
   else if (matches(tag_name, BOLD_TAGS, NUM_BOLD_TAGS))
@@ -126,14 +198,18 @@ bool RubbishHtmlParser::VisitEnter(const tinyxml2::XMLElement &element, const ti
   return true;
 }
 /// Visit a text node.
-bool RubbishHtmlParser::Visit(const tinyxml2::XMLText &text)
+bool RubbishHtmlParser::visit_text(const pugi::xml_node &node)
 {
-  addText(text.Value(), is_bold, is_italic);
+  const char *value = node.value();
+  if (value && value[0] != '\0')
+  {
+    addText(value, is_bold, is_italic);
+  }
   return true;
 }
-bool RubbishHtmlParser::VisitExit(const tinyxml2::XMLElement &element)
+bool RubbishHtmlParser::exit_node(const pugi::xml_node &element)
 {
-  const char *tag_name = element.Name();
+  const char *tag_name = element.name();
   if (matches(tag_name, HEADER_TAGS, NUM_HEADER_TAGS))
   {
     is_bold = false;
@@ -175,10 +251,50 @@ void RubbishHtmlParser::startNewTextBlock(BLOCK_STYLE style)
 
 void RubbishHtmlParser::parse(const char *html, int length)
 {
-  startNewTextBlock(JUSTIFIED);
-  tinyxml2::XMLDocument doc(false, tinyxml2::COLLAPSE_WHITESPACE);
-  doc.Parse(html, length);
-  doc.Accept(this);
+  // Default paragraph alignment is controlled by the reader setting.
+  startNewTextBlock(m_justify_paragraphs ? JUSTIFIED : LEFT_ALIGN);
+  pugi::xml_document doc;
+  // Preserve significant text while still collapsing some whitespace via
+  // our own addText() handling.
+  pugi::xml_parse_result result =
+      doc.load_buffer(html, length, pugi::parse_default | pugi::parse_ws_pcdata);
+
+  if (!result)
+  {
+    // If parsing fails, just treat everything as a single text block.
+    addText(html, false, false);
+    return;
+  }
+
+  pugi::xml_node root = doc.child("html");
+  pugi::xml_node body = root ? root.child("body") : pugi::xml_node();
+  pugi::xml_node start = body ? body : doc;
+
+  std::function<void(const pugi::xml_node &)> walk =
+      [&](const pugi::xml_node &node)
+      {
+        if (node.type() == pugi::node_element)
+        {
+          if (!enter_node(node))
+          {
+            return;
+          }
+          for (pugi::xml_node child : node.children())
+          {
+            walk(child);
+          }
+          exit_node(node);
+        }
+        else if (node.type() == pugi::node_pcdata || node.type() == pugi::node_cdata)
+        {
+          visit_text(node);
+        }
+      };
+
+  for (pugi::xml_node child : start.children())
+  {
+    walk(child);
+  }
 }
 
 void RubbishHtmlParser::addText(const char *text, bool is_bold, bool is_italic)
@@ -188,14 +304,31 @@ void RubbishHtmlParser::addText(const char *text, bool is_bold, bool is_italic)
   currentTextBlock->add_span(parsetxt.c_str(), is_bold, is_italic);
 }
 
+static const int MAX_IMAGES_PER_SECTION = 8;
+
 void RubbishHtmlParser::layout(Renderer *renderer, Epub *epub)
 {
   const int line_height = renderer->get_line_height();
   const int page_height = renderer->get_page_height();
   // first ask the blocks to work out where they should have
   // line breaks based on the page width
+  int images_seen = 0;
   for (auto block : blocks)
   {
+    if (block->getType() == BlockType::IMAGE_BLOCK)
+    {
+      images_seen++;
+      if (images_seen > MAX_IMAGES_PER_SECTION)
+      {
+        ImageBlock *imageBlock = (ImageBlock *)block;
+        imageBlock->width = 0;
+        imageBlock->height = 0;
+        // feed the watchdog even when skipping heavy images
+        vTaskDelay(1);
+        continue;
+      }
+    }
+
     block->layout(renderer, epub);
     // feed the watchdog
     vTaskDelay(1);
@@ -229,6 +362,10 @@ void RubbishHtmlParser::layout(Renderer *renderer, Epub *epub)
     if (block->getType() == BlockType::IMAGE_BLOCK)
     {
       ImageBlock *imageBlock = (ImageBlock *)block;
+      if (imageBlock->width <= 0 || imageBlock->height <= 0)
+      {
+        continue;
+      }
       if (y + imageBlock->height > page_height)
       {
         pages.push_back(new Page());
@@ -250,15 +387,16 @@ void RubbishHtmlParser::render_page(int page_index, Renderer *renderer, Epub *ep
     renderer->flush_display();
   }
 
-  try
-    {
-      pages.at(page_index)->render(renderer, epub);
-    } catch (const std::out_of_range &oor) {
-      ESP_LOGI(TAG, "render_page out of range");
-      // This could be nicer. Notice that last word "button" is cut          v
-      uint16_t y = renderer->get_page_height()/2-20;
-      renderer->draw_rect(1, y, renderer->get_page_width(), 105, 125);
-      renderer->draw_text_box("Reached the limit of the book\nUse the SELECT button",
-                              10, y, renderer->get_page_width(), 80, false, false);
-    }
+  if (page_index < 0 || page_index >= static_cast<int>(pages.size()))
+  {
+    ESP_LOGI(TAG, "render_page out of range");
+    // This could be nicer. Notice that last word "button" is cut          v
+    uint16_t y = renderer->get_page_height()/2-20;
+    renderer->draw_rect(1, y, renderer->get_page_width(), 105, 125);
+    renderer->draw_text_box("Reached the limit of the book\nUse the SELECT button",
+                            10, y, renderer->get_page_width(), 80, false, false);
+    return;
+  }
+
+  pages[page_index]->render(renderer, epub);
 }

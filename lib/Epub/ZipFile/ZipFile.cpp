@@ -1,5 +1,8 @@
 #ifndef UNIT_TEST
 #include <esp_log.h>
+#if defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
 #else
 #define ESP_LOGE(args...)
 #define ESP_LOGI(args...)
@@ -40,9 +43,14 @@ uint8_t *ZipFile::read_file_to_memory(const char *filename, size_t *size)
     mz_zip_reader_end(&zip_archive);
     return nullptr;
   }
-  // allocate memory for the file
+  // allocate memory for the file (optionally in PSRAM)
   size_t file_size = file_stat.m_uncomp_size;
-  uint8_t *file_data = (uint8_t *)calloc(file_size + 1, 1);
+  uint8_t *file_data;
+#if !defined(UNIT_TEST) && defined(BOARD_HAS_PSRAM)
+  file_data = (uint8_t *)heap_caps_calloc(file_size + 1, 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+  file_data = (uint8_t *)calloc(file_size + 1, 1);
+#endif
   if (!file_data)
   {
     ESP_LOGE(TAG, "Failed to allocate memory for %s\n", file_stat.m_filename);

@@ -2,6 +2,7 @@
 #include <esp_err.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_timer.h>
 #include "M5EPD_Driver.h"
 
 #define M5EPD_MAIN_PWR_PIN GPIO_NUM_2

@@ -1,3 +1,5 @@
+#if defined(BOARD_TYPE_M5_PAPER)
+
 #include "M5Paper.h"
 #include <Renderer/M5PaperRenderer.h>
 #include <regular_font.h>
@@ -49,7 +51,7 @@ void M5Paper::stop_filesystem()
   // delete sdcard;
 #endif
 }
-ButtonControls *M5Paper::get_button_controls(xQueueHandle ui_queue)
+ButtonControls *M5Paper::get_button_controls(QueueHandle_t ui_queue)
 {
   return new GPIOButtonControls(
       BUTTON_UP_GPIO_NUM,
@@ -61,3 +63,5 @@ ButtonControls *M5Paper::get_button_controls(xQueueHandle ui_queue)
         xQueueSend(ui_queue, &action, 0);
       });
 }
+
+#endif

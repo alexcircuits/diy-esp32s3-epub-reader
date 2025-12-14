@@ -17,9 +17,12 @@ Renderer::~Renderer()
 
 ImageHelper *Renderer::get_image_helper(const std::string &filename, const uint8_t *data, size_t data_size)
 {
-  if (filename.find(".jpg") != std::string::npos ||
-      filename.find(".jpeg") != std::string::npos ||
-      (data_size > 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF))
+  // Prefer magic-byte detection over extension to handle mislabelled
+  // resources inside EPUB containers.
+  bool looks_jpeg = (data_size > 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF);
+  bool looks_png = (data_size > 4 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G');
+
+  if (looks_jpeg)
   {
     if (!jpeg_helper)
     {
@@ -27,7 +30,38 @@ ImageHelper *Renderer::get_image_helper(const std::string &filename, const uint8
     }
     return jpeg_helper;
   }
-  if ((filename.find(".png") != std::string::npos) || (data_size > 4 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G'))
+  if (looks_png)
+  {
+    if (!png_helper)
+    {
+      png_helper = new PNGHelper();
+    }
+    return png_helper;
+  }
+
+  // Fallback to file extension if magic bytes are inconclusive. The
+  // comparison is done case-insensitively so that resources such as
+  // sleep images from "/fs/Pics" still decode correctly even when
+  // their extensions are upper-case or mixed-case.
+  std::string lower = filename;
+  for (char &c : lower)
+  {
+    if (c >= 'A' && c <= 'Z')
+    {
+      c = static_cast<char>(c - 'A' + 'a');
+    }
+  }
+
+  if (lower.find(".jpg") != std::string::npos ||
+      lower.find(".jpeg") != std::string::npos)
+  {
+    if (!jpeg_helper)
+    {
+      jpeg_helper = new JPEGHelper();
+    }
+    return jpeg_helper;
+  }
+  if (lower.find(".png") != std::string::npos)
   {
     if (!png_helper)
     {
@@ -44,8 +78,12 @@ void Renderer::draw_image(const std::string &filename, const uint8_t *data, size
   if (!helper ||
       !helper->render(data, data_size, this, x, y, width, height))
   {
-    // fall back to drawing a rectangle placeholder
-    draw_rect(x + 20, y + 20, width - 40, height - 40);
+    // If an image cannot be decoded or has an unknown type, do not draw
+    // any generic cover-style placeholder. Callers that need a fallback
+    // (such as the library views) are responsible for drawing their own
+    // title cards or other UI elements in the target region.
+    (void)image_placeholder_enabled;
+    return;
   }
 }
 

@@ -1,0 +1,14 @@
+prefix=/Users/justin/code/diy-esp32s3-epub-reader/lib_freetype
+exec_prefix=/Users/justin/code/diy-esp32s3-epub-reader/lib_freetype
+libdir=/Users/justin/code/diy-esp32s3-epub-reader/lib_freetype/lib
+includedir=/Users/justin/code/diy-esp32s3-epub-reader/lib_freetype/include
+
+Name: FreeType 2
+URL: https://freetype.org
+Description: A free, high-quality, and portable font engine.
+Version: 26.4.20
+Requires: 
+Requires.private: 
+Libs: -L/Users/justin/code/diy-esp32s3-epub-reader/lib_freetype/lib -lfreetype 
+Libs.private: 
+Cflags: -I${includedir}/freetype2

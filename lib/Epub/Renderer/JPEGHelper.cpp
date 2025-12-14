@@ -3,6 +3,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_log.h>
+#if defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
 #else
 #define vTaskDelay(t)
 #define ESP_LOGE(args...)
@@ -17,7 +20,12 @@ static const char *TAG = "JPG";
 
 bool JPEGHelper::get_size(const uint8_t *data, size_t data_size, int *width, int *height)
 {
-  void *pool = malloc(POOL_SIZE);
+  void *pool;
+#if !defined(UNIT_TEST) && defined(BOARD_HAS_PSRAM)
+  pool = heap_caps_malloc(POOL_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+  pool = malloc(POOL_SIZE);
+#endif
   if (!pool)
   {
     ESP_LOGE(TAG, "Failed to allocate memory for pool");
@@ -25,6 +33,7 @@ bool JPEGHelper::get_size(const uint8_t *data, size_t data_size, int *width, int
   }
   m_data = data;
   m_data_pos = 0;
+  m_data_size = data_size;
   // decode the jpeg and get its size
   JDEC dec;
   JRESULT res = jd_prepare(&dec, read_jpeg_data, pool, POOL_SIZE, this);
@@ -36,20 +45,25 @@ bool JPEGHelper::get_size(const uint8_t *data, size_t data_size, int *width, int
   }
   else
   {
-    ESP_LOGE(TAG, "JPEG Decode failed - %d", res);
-    return false;
+    ESP_LOGE(TAG, "JPEG Decode failed (get_size) - %d", res);
   }
   free(pool);
   m_data = nullptr;
   m_data_pos = 0;
-  return true;
+  m_data_size = 0;
+  return res == JDR_OK;
 }
 bool JPEGHelper::render(const uint8_t *data, size_t data_size, Renderer *renderer, int x_pos, int y_pos, int width, int height)
 {
   this->renderer = renderer;
   this->y_pos = y_pos;
   this->x_pos = x_pos;
-  void *pool = malloc(POOL_SIZE);
+  void *pool;
+#if !defined(UNIT_TEST) && defined(BOARD_HAS_PSRAM)
+  pool = heap_caps_malloc(POOL_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+  pool = malloc(POOL_SIZE);
+#endif
   if (!pool)
   {
     ESP_LOGE(TAG, "Failed to allocate memory for pool");
@@ -57,6 +71,7 @@ bool JPEGHelper::render(const uint8_t *data, size_t data_size, Renderer *rendere
   }
   m_data = data;
   m_data_pos = 0;
+  m_data_size = data_size;
   // decode the jpeg and get its size
   JDEC dec;
   JRESULT res = jd_prepare(&dec, read_jpeg_data, pool, POOL_SIZE, this);
@@ -82,11 +97,12 @@ bool JPEGHelper::render(const uint8_t *data, size_t data_size, Renderer *rendere
   }
   else
   {
-    ESP_LOGE(TAG, "JPEG Decode failed - %d", res);
+    ESP_LOGE(TAG, "JPEG Decode failed (render) - %d", res);
   }
   free(pool);
   m_data = nullptr;
   m_data_pos = 0;
+  m_data_size = 0;
   return res == JDR_OK;
 }
 
@@ -102,12 +118,21 @@ size_t read_jpeg_data(
     ESP_LOGE(TAG, "No image data");
     return 0;
   }
-  if (buff)
+  if (context->m_data_size == 0 || context->m_data_pos >= context->m_data_size)
   {
-    memcpy(buff, context->m_data + context->m_data_pos, ndata);
+    ESP_LOGE(TAG, "JPEG input exhausted (pos=%u, size=%u)", (unsigned)context->m_data_pos, (unsigned)context->m_data_size);
+    return 0;
   }
-  context->m_data_pos += ndata;
-  return ndata;
+
+  size_t remaining = context->m_data_size - context->m_data_pos;
+  size_t to_copy = ndata <= remaining ? ndata : remaining;
+
+  if (buff && to_copy > 0)
+  {
+    memcpy(buff, context->m_data + context->m_data_pos, to_copy);
+  }
+  context->m_data_pos += to_copy;
+  return to_copy;
 }
 
 static int last_y = 0;

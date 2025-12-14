@@ -25,6 +25,7 @@ private:
   // temporary vars used for the JPEG callbacks
   const uint8_t *m_data;
   size_t m_data_pos;
+  size_t m_data_size;
 
   Renderer *renderer;
   int x_pos;

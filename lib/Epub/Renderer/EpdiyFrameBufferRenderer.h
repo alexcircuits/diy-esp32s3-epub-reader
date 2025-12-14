@@ -1,9 +1,27 @@
 #pragma once
 #include <esp_log.h>
+
+#if defined(BOARD_TYPE_PAPER_S3)
+// Paper S3 uses a 4.7" 960x540 panel driven by epdiy; epdiy coordinates are
+// 960x540 (width x height) before we apply an inverted portrait rotation.
+#include <epdiy.h>
+#ifndef EPD_WIDTH
+#define EPD_WIDTH 960
+#endif
+#ifndef EPD_HEIGHT
+#define EPD_HEIGHT 540
+#endif
+#else
 #include <epd_driver.h>
+#endif
+
 #include <math.h>
 #include "Renderer.h"
 #include "miniz.h"
+
+#ifdef USE_FREETYPE
+#include "FreeTypeFont.h"
+#endif
 
 #define GAMMA_VALUE (1.0f / 0.8f)
 
@@ -21,6 +39,11 @@ protected:
   EpdFontProperties m_font_props;
   uint8_t gamma_curve[256] = {0};
   bool needs_gray_flush = false;
+
+#ifdef USE_FREETYPE
+  FreeTypeFont *m_freetype_font = nullptr;
+  bool m_freetype_enabled = false;
+#endif
 
   const EpdFont *get_font(bool is_bold, bool is_italic)
   {
@@ -54,6 +77,8 @@ public:
     m_font_props = epd_font_properties_default();
     // fallback to a question mark for character not available in the font
     m_font_props.fallback_glyph = '?';
+    // For Paper S3 we always render in inverted portrait orientation so that
+    // logical coordinates are (page_width = 540, page_height = 960).
     epd_set_rotation(EPD_ROT_INVERTED_PORTRAIT);
 
     for (int gray_value = 0; gray_value < 256; gray_value++)
@@ -109,6 +134,20 @@ public:
 
   int get_text_width(const char *text, bool bold = false, bool italic = false)
   {
+#ifdef USE_FREETYPE
+    if (m_freetype_enabled && m_freetype_font && m_freetype_font->is_valid())
+    {
+      return m_freetype_font->get_text_width(text);
+    }
+#endif
+    if (!m_regular_font)
+    {
+      // No bitmap font available (e.g. Paper S3 FreeType-only and
+      // FreeType failed to initialize). Return a conservative width of
+      // zero so callers can handle it gracefully.
+      return 0;
+    }
+
     int x = 0, y = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
     epd_get_text_bounds(get_font(bold, italic), text, &x, &y, &x1, &y1, &x2, &y2, &m_font_props);
     return x2 - x1;
@@ -117,6 +156,21 @@ public:
   {
     // if using antialised text then set to gray next flush
     // needs_gray_flush = true;
+#ifdef USE_FREETYPE
+    if (m_freetype_enabled && m_freetype_font && m_freetype_font->is_valid())
+    {
+      int xpos = x + margin_left;
+      int ypos = y + margin_top;
+      m_freetype_font->draw_text(this, xpos, ypos, text);
+      return;
+    }
+#endif
+    if (!m_regular_font)
+    {
+      // No bitmap font available and FreeType is disabled; nothing to
+      // draw.
+      return;
+    }
     int ypos = y + get_line_height() + margin_top;
     int xpos = x + margin_left;
     epd_write_string(get_font(bold, italic), text, &xpos, &ypos, m_frame_buffer, &m_font_props);
@@ -139,12 +193,20 @@ public:
   virtual void fill_triangle(int x0, int y0, int x1, int y1, int x2, int y2, uint8_t color)
   {
     needs_gray(color);
-    epd_fill_triangle(x0, y0, x1, y1, x2, y2, color, m_frame_buffer);
+    epd_fill_triangle(
+        x0 + margin_left, y0 + margin_top,
+        x1 + margin_left, y1 + margin_top,
+        x2 + margin_left, y2 + margin_top,
+        color, m_frame_buffer);
   }
   virtual void draw_triangle(int x0, int y0, int x1, int y1, int x2, int y2, uint8_t color)
   {
     needs_gray(color);
-    epd_draw_triangle(x0, y0, x1, y1, x2, y2, color, m_frame_buffer);
+    epd_draw_triangle(
+        x0 + margin_left, y0 + margin_top,
+        x1 + margin_left, y1 + margin_top,
+        x2 + margin_left, y2 + margin_top,
+        color, m_frame_buffer);
   }
   virtual void draw_pixel(int x, int y, uint8_t color)
   {
@@ -176,11 +238,35 @@ public:
   }
   virtual int get_space_width()
   {
+    // When using FreeType for the reading view, use the FreeType
+    // font's measurement for the width of a space so that layout and
+    // rendering stay in sync.
+#ifdef USE_FREETYPE
+    if (m_freetype_enabled && m_freetype_font && m_freetype_font->is_valid())
+    {
+      return m_freetype_font->get_text_width(" ");
+    }
+#endif
+    if (!m_regular_font)
+    {
+      // Fallback when no bitmap font is available.
+      return 0;
+    }
     auto space_glyph = epd_get_glyph(m_regular_font, ' ');
     return space_glyph->advance_x;
   }
   virtual int get_line_height()
   {
+  #ifdef USE_FREETYPE
+    if (m_freetype_enabled && m_freetype_font && m_freetype_font->is_valid())
+    {
+      return m_freetype_font->get_line_height();
+    }
+  #endif
+    if (!m_regular_font)
+    {
+      return 0;
+    }
     return m_regular_font->advance_y;
   }
 
@@ -260,4 +346,33 @@ public:
     return success;
   }
   virtual void reset() = 0;
+
+#ifdef USE_FREETYPE
+  virtual void set_freetype_font_for_reading(FreeTypeFont *font) override
+  {
+    m_freetype_font = font;
+  }
+  virtual void set_freetype_enabled(bool enabled) override
+  {
+    m_freetype_enabled = enabled && (m_freetype_font != nullptr && m_freetype_font->is_valid());
+  }
+
+  virtual int get_reading_font_pixel_height() const override
+  {
+    if (m_freetype_font && m_freetype_font->is_valid())
+    {
+      return m_freetype_font->get_pixel_height();
+    }
+    return 0;
+  }
+
+  virtual bool set_reading_font_pixel_height(int pixel_height) override
+  {
+    if (!m_freetype_font || !m_freetype_font->is_valid())
+    {
+      return false;
+    }
+    return m_freetype_font->set_pixel_height(pixel_height);
+  }
+#endif
 };

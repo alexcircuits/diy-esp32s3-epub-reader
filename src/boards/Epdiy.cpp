@@ -33,7 +33,7 @@ Renderer *Epdiy::get_renderer()
       hourglass_height);
 }
 
-ButtonControls *Epdiy::get_button_controls(xQueueHandle ui_queue)
+ButtonControls *Epdiy::get_button_controls(QueueHandle_t ui_queue)
 {
   return new EpdiyV6ButtonControls(
       BUTTON_SELECT_GPIO_NUM,

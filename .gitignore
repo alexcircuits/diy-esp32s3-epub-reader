@@ -5,3 +5,7 @@ venv
 build
 *.old
 
+spiffs-paper-s3.bin
+releases/
+
+components/epdiy/.git/

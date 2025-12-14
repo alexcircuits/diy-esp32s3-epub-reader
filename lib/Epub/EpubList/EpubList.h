@@ -28,13 +28,30 @@ private:
   Renderer *renderer;
   EpubListState &state;
   bool m_needs_redraw = false;
+  std::vector<TextBlock *> m_title_blocks;
+
+  bool load_index(const char *books_path, const char *index_path);
 
 public:
-  EpubList(Renderer *renderer, EpubListState &state) : renderer(renderer), state(state){};
-  ~EpubList() {}
+  EpubList(Renderer *renderer, EpubListState &state) : renderer(renderer), state(state)
+  {
+    if (!state.is_loaded)
+    {
+      state.use_grid_view = true;
+    }
+  }
+  ~EpubList()
+  {
+    for (auto *block : m_title_blocks)
+    {
+      delete block;
+    }
+    m_title_blocks.clear();
+  }
   bool load(const char *path);
   void set_needs_redraw() { m_needs_redraw = true; }
   void next();
   void prev();
   void render();
+  void save_index(const char *index_path);
 };

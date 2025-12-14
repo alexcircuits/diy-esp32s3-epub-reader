@@ -1,7 +1,9 @@
 #include "EpdiyV6ButtonControls.h"
 
+#if EPDIYBTN_HAS_ULP
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
+#endif
 
 EpdiyV6ButtonControls::EpdiyV6ButtonControls(
     gpio_num_t gpio_select,
@@ -24,11 +26,13 @@ bool EpdiyV6ButtonControls::did_wake_from_deep_sleep()
   auto wake_cause = esp_sleep_get_wakeup_cause();
   // if our controls are active low then we must have been woken by the ULP
   // as that's the only mechanism available for active low buttons
+#if EPDIYBTN_HAS_ULP
   if (active_level == 0 && wake_cause == ESP_SLEEP_WAKEUP_ULP)
   {
     ESP_LOGI("Controls", "ULP Wakeup");
     return true;
   }
+#endif
   if (active_level == 1 && wake_cause == ESP_SLEEP_WAKEUP_EXT1)
   {
     ESP_LOGI("Controls", "EXT1 Wakeup");
@@ -41,6 +45,7 @@ UIAction EpdiyV6ButtonControls::get_deep_sleep_action()
 {
   if (active_level == 0)
   {
+#if EPDIYBTN_HAS_ULP
     uint16_t rtc_pin = ulp_gpio_status & UINT16_MAX;
     ESP_LOGI("Controls", "***** rtc_pin: %d", rtc_pin);
 
@@ -49,6 +54,7 @@ UIAction EpdiyV6ButtonControls::get_deep_sleep_action()
       ESP_LOGI("Controls", "***** SELECT %d, %d, %d", 1 << rtc_io_number_get(gpio_select), rtc_pin, (rtc_pin & (1 << rtc_io_number_get(gpio_select))));
       return UIAction::SELECT;
     }
+#endif
   }
   else
   {
@@ -63,6 +69,7 @@ UIAction EpdiyV6ButtonControls::get_deep_sleep_action()
 
 void EpdiyV6ButtonControls::setup_deep_sleep()
 {
+#if EPDIYBTN_HAS_ULP
   if (active_level == 0)
   {
     rtc_gpio_init(gpio_select);
@@ -79,10 +86,13 @@ void EpdiyV6ButtonControls::setup_deep_sleep()
     ulp_set_wakeup_period(0, 100 * 1000); // 100 ms
     err = ulp_run(&ulp_entry - RTC_SLOW_MEM);
     ESP_ERROR_CHECK(err);
+    return;
   }
-  else
+#endif
+
+  // can use ext1 for buttons that are active high
+  if (active_level == 1)
   {
-    // can use ext1 for buttons that are active high
     rtc_gpio_init(gpio_select);
     rtc_gpio_set_direction(gpio_select, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_en(gpio_select);
@@ -104,7 +114,7 @@ esp_err_t EpdiyV6ButtonControls::i2c_master_read_slave(i2c_port_t i2c_num, uint8
   i2c_master_write_byte(cmd, reg, true);
   i2c_master_stop(cmd);
 
-  esp_err_t ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+  esp_err_t ret = i2c_master_cmd_begin(i2c_num, cmd, pdMS_TO_TICKS(1000));
   if (ret != ESP_OK)
   {
     return ret;
@@ -121,7 +131,7 @@ esp_err_t EpdiyV6ButtonControls::i2c_master_read_slave(i2c_port_t i2c_num, uint8
   i2c_master_read_byte(cmd, data_rd + size - 1, I2C_MASTER_NACK);
   i2c_master_stop(cmd);
 
-  ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+  ret = i2c_master_cmd_begin(i2c_num, cmd, pdMS_TO_TICKS(1000));
   if (ret != ESP_OK)
   {
     return ret;

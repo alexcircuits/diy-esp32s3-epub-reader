@@ -1,5 +1,4 @@
 #pragma once
-#include "pca9555.h"
 #include <driver/i2c.h>
 #include "Actions.h"
 #include "GPIOButton.h"
@@ -7,10 +6,18 @@
 #include <esp_sleep.h>
 #include <driver/rtc_io.h>
 #include <driver/gpio.h>
-#include <esp32/ulp.h>
-#include <esp_timer.h>
-#include "ulp_main.h"
 #include "ButtonControls.h"
+
+#include <esp_timer.h>
+
+// Conditionally enable ULP-based wake support when esp32/ulp.h is available.
+#if __has_include(<esp32/ulp.h>)
+#include <esp32/ulp.h>
+#include "ulp_main.h"
+#define EPDIYBTN_HAS_ULP 1
+#else
+#define EPDIYBTN_HAS_ULP 0
+#endif
 
 // This CFG_INTR is defined on display_ops.h
 #define CFG_INTR GPIO_NUM_35

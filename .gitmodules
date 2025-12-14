@@ -7,3 +7,6 @@
 [submodule "lib/epdiy"]
 	path = lib/epdiy
 	url = https://github.com/martinberlin/epdiy-rotation.git
+[submodule "lib/pngle"]
+	path = lib/pngle
+	url = https://github.com/kikuchan/pngle.git

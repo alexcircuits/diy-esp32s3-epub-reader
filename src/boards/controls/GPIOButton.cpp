@@ -1,6 +1,7 @@
 #include "GPIOButton.h"
 #include <esp_timer.h>
 #include <driver/gpio.h>
+#include <esp_attr.h>
 
 // 100 ms debounce on the buttons
 const int BUTTON_DEBOUNCE = 50000;

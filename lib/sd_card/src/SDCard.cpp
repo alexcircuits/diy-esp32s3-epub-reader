@@ -13,7 +13,9 @@
 
 static const char *TAG = "SDC";
 
-#define SPI_DMA_CHAN 1
+// Use auto-allocated DMA channel so this works on ESP32-S3 and other variants
+// that do not support fixed DMA channel selection.
+#define SPI_DMA_CHAN SPI_DMA_CH_AUTO
 
 SDCard::SDCard(const char *mount_point, gpio_num_t miso, gpio_num_t mosi, gpio_num_t clk, gpio_num_t cs)
 {
@@ -25,7 +27,7 @@ SDCard::SDCard(const char *mount_point, gpio_num_t miso, gpio_num_t mosi, gpio_n
   // formatted in case when mounting fails.
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
       .format_if_mount_failed = true,
-      .max_files = 5,
+      .max_files = 10,
       .allocation_unit_size = 16 * 1024};
 
   ESP_LOGI(TAG, "Initializing SD card");
@@ -77,6 +79,15 @@ SDCard::SDCard(const char *mount_point, gpio_num_t miso, gpio_num_t mosi, gpio_n
   }
   // Card has been initialized, print its properties
   sdmmc_card_print_info(stdout, m_card);
+
+  // Ensure the Books directory exists under the mount point so EpubList can
+  // reliably open /fs/Books even on a freshly formatted card.
+  std::string books_dir = m_mount_point + "/Books";
+  struct stat st;
+  if (stat(books_dir.c_str(), &st) != 0)
+  {
+    mkdir(books_dir.c_str(), 0775);
+  }
 }
 
 SDCard::~SDCard()

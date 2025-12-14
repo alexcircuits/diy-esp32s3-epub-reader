@@ -111,7 +111,31 @@ void TextBlock::layout(Renderer *renderer, Epub *epub, int max_width)
 
       // If we're bigger than the current pagewidth then we can't add more words
       if (currlen > page_width)
+      {
+        // If even a single word is wider than the page, place it on
+        // its own line rather than leaving ans[i] uninitialized.
+        if (j == i)
+        {
+          // Treat this overlong word as a line by itself.
+          int cost;
+          if (j == n - 1)
+          {
+            cost = 0;
+          }
+          else
+          {
+            // No leftover space: clamp to page_width so the cost term
+            // is small but finite.
+            cost = dp[j + 1];
+          }
+          if (cost < dp[i])
+          {
+            dp[i] = cost;
+            ans[i] = j;
+          }
+        }
         break;
+      }
 
       // if we've run out of words then this is last line and the cost should be 0
       // Otherwise the cost is the sqaure of the left over space + the costs of all the previous lines
@@ -126,6 +150,15 @@ void TextBlock::layout(Renderer *renderer, Epub *epub, int max_width)
         dp[i] = cost;
         ans[i] = j;
       }
+    }
+
+    // As an additional safety net, if we somehow failed to assign a
+    // finite cost for this starting word, force it to advance by at
+    // least one word so that ans[i] is always within [i, n-1].
+    if (dp[i] == INT_MAX)
+    {
+      dp[i] = 0;
+      ans[i] = (i + 1 < n) ? static_cast<size_t>(i + 1) : static_cast<size_t>(n - 1);
     }
   }
   // We can now iterate through the answer to find the line break positions

@@ -37,7 +37,7 @@ Renderer *Lilygo_t5_47::get_renderer()
       hourglass_width,
       hourglass_height);
 }
-TouchControls *Lilygo_t5_47::get_touch_controls(Renderer *renderer, xQueueHandle ui_queue)
+TouchControls *Lilygo_t5_47::get_touch_controls(Renderer *renderer, QueueHandle_t ui_queue)
 {
 #ifdef USE_L58_TOUCH
   return new L58TouchControls(
@@ -54,7 +54,7 @@ TouchControls *Lilygo_t5_47::get_touch_controls(Renderer *renderer, xQueueHandle
   // dummy implementation
   return new TouchControls();
 }
-ButtonControls *Lilygo_t5_47::get_button_controls(xQueueHandle ui_queue)
+ButtonControls *Lilygo_t5_47::get_button_controls(QueueHandle_t ui_queue)
 {
   return new GPIOButtonControls(
       BUTTON_UP_GPIO_NUM,

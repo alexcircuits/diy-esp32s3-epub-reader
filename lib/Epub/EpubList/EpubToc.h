@@ -32,10 +32,11 @@ private:
   EpubListItem &selected_epub;
   EpubTocState &state;
   bool m_needs_redraw = false;
+  std::vector<TextBlock *> m_title_blocks;
 
 public:
   EpubToc(EpubListItem &selected_epub, EpubTocState &state, Renderer *renderer) : renderer(renderer), selected_epub(selected_epub), state(state){};
-  ~EpubToc() {}
+  ~EpubToc();
   bool load();
   void next();
   void prev();

@@ -3,14 +3,24 @@
 #include <esp_sleep.h>
 #include <driver/rtc_io.h>
 #include <driver/gpio.h>
-#include <esp32/ulp.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include "GPIOButtonControls.h"
-#include "ulp_main.h"
 
+// ULP support is only available on some targets / IDF versions.
+// Make usage conditional so builds succeed when esp32/ulp.h is absent.
+#if __has_include(<esp32/ulp.h>)
+#include <esp32/ulp.h>
+#include "ulp_main.h"
+#define GPIOBTN_HAS_ULP 1
+#else
+#define GPIOBTN_HAS_ULP 0
+#endif
+
+#if GPIOBTN_HAS_ULP
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[] asm("_binary_ulp_main_bin_end");
+#endif
 
 GPIOButtonControls::GPIOButtonControls(
     gpio_num_t gpio_up,
@@ -51,6 +61,8 @@ bool GPIOButtonControls::did_wake_from_deep_sleep()
 
 UIAction GPIOButtonControls::get_deep_sleep_action()
 {
+  // If ULP support is available and buttons are active-low, prefer ULP status.
+#if GPIOBTN_HAS_ULP
   if (active_level == 0)
   {
     uint16_t rtc_pin = ulp_gpio_status & UINT16_MAX;
@@ -71,7 +83,10 @@ UIAction GPIOButtonControls::get_deep_sleep_action()
       return UIAction::SELECT;
     }
   }
-  else
+#endif
+
+  // Fallback / active-high buttons use EXT1 wakeup status.
+  if (active_level == 1)
   {
     uint64_t ext1_buttons = esp_sleep_get_ext1_wakeup_status();
     if (ext1_buttons & (1ULL << gpio_up))
@@ -92,6 +107,7 @@ UIAction GPIOButtonControls::get_deep_sleep_action()
 
 void GPIOButtonControls::setup_deep_sleep()
 {
+#if GPIOBTN_HAS_ULP
   if (active_level == 0)
   {
     rtc_gpio_init(gpio_up);
@@ -118,10 +134,13 @@ void GPIOButtonControls::setup_deep_sleep()
     ulp_set_wakeup_period(0, 100 * 1000); // 100 ms
     err = ulp_run(&ulp_entry - RTC_SLOW_MEM);
     ESP_ERROR_CHECK(err);
+    return;
   }
-  else
+#endif
+
+  // For active-high buttons, or when ULP is unavailable, use EXT1 wakeup.
+  if (active_level == 1)
   {
-    // can use ext1 for buttons that are active high
     rtc_gpio_init(gpio_up);
     rtc_gpio_set_direction(gpio_up, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_en(gpio_up);
