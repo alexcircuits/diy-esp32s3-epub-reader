@@ -22,6 +22,7 @@ private:
   float x_scale;
   float y_scale;
   int scale_factor;
+  uint32_t last_yield_time;
   // temporary vars used for the JPEG callbacks
   const uint8_t *m_data;
   size_t m_data_pos;

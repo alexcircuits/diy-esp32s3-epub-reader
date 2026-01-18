@@ -10,6 +10,7 @@
 
 #include <algorithm>
 
+#include <esp_timer.h>
 #include "PNGHelper.h"
 #include "Renderer.h"
 
@@ -73,10 +74,11 @@ void pngle_draw_callback(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uin
 
   for (int yy = sy0; yy < sy1; ++yy)
   {
-    if (yy != helper->last_y)
+    int64_t now = esp_timer_get_time();
+    if (now - helper->last_yield_time > 50000)
     {
       vTaskDelay(1);
-      helper->last_y = yy;
+      helper->last_yield_time = now;
     }
     for (int xx = sx0; xx < sx1; ++xx)
     {
@@ -142,6 +144,7 @@ bool PNGHelper::render(const uint8_t *data, size_t data_size, Renderer *renderer
   this->x_pos = x_pos;
   this->target_width = width;
   this->target_height = height;
+  this->last_yield_time = esp_timer_get_time();
   this->last_y = -1;
   this->x_scale = 1.0f;
   this->y_scale = 1.0f;

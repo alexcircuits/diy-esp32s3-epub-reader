@@ -11,6 +11,7 @@
 #define ESP_LOGE(args...)
 #define ESP_LOGI(args...)
 #endif
+#include <esp_timer.h>
 #include "JPEGHelper.h"
 #include "Renderer.h"
 
@@ -58,6 +59,7 @@ bool JPEGHelper::render(const uint8_t *data, size_t data_size, Renderer *rendere
   this->renderer = renderer;
   this->y_pos = y_pos;
   this->x_pos = x_pos;
+  this->last_yield_time = esp_timer_get_time();
   void *pool;
 #if !defined(UNIT_TEST) && defined(BOARD_HAS_PSRAM)
   pool = heap_caps_malloc(POOL_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -159,7 +161,7 @@ size_t read_jpeg_data(
   return to_copy;
 }
 
-static int last_y = 0;
+
 
 // this is not a very efficient way of doing this - could be improved considerably
 int draw_jpeg_function(
@@ -172,9 +174,11 @@ int draw_jpeg_function(
   Renderer *renderer = (Renderer *)context->renderer;
   uint8_t *rgb = (uint8_t *)bitmap;
   // this is a bit of dirty hack to only delay every line to feed the watchdog
-  if (rect->top != last_y)
+  // feed the watchdog every 50ms
+  int64_t now = esp_timer_get_time();
+  if (now - context->last_yield_time > 50000)
   {
-    last_y = rect->top;
+    context->last_yield_time = now;
     vTaskDelay(1);
   }
 

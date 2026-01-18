@@ -24,6 +24,7 @@ private:
   float y_scale;
   int target_width;
   int target_height;
+  int64_t last_yield_time;
 #ifndef USE_PNGLE
   uint16_t *tmp_rgb565_buffer;
   PNG png;
