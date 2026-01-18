@@ -32,8 +32,8 @@ void pngle_init_callback(pngle_t *pngle, uint32_t w, uint32_t h)
   helper->y_scale = 1.0f;
   if (w > 0 && h > 0)
   {
-    helper->x_scale = static_cast<float>(helper->renderer->get_page_width()) / static_cast<float>(w);
-    helper->y_scale = static_cast<float>(helper->renderer->get_page_height()) / static_cast<float>(h);
+    helper->x_scale = static_cast<float>(helper->target_width) / static_cast<float>(w);
+    helper->y_scale = static_cast<float>(helper->target_height) / static_cast<float>(h);
   }
 }
 
@@ -140,6 +140,8 @@ bool PNGHelper::render(const uint8_t *data, size_t data_size, Renderer *renderer
   this->renderer = renderer;
   this->y_pos = y_pos;
   this->x_pos = x_pos;
+  this->target_width = width;
+  this->target_height = height;
   this->last_y = -1;
   this->x_scale = 1.0f;
   this->y_scale = 1.0f;
