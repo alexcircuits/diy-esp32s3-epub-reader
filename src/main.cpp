@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <esp_random.h>
+#include <memory>
 #include "config.h"
 #include "EpubList/Epub.h"
 #include "EpubList/EpubList.h"
@@ -24,7 +25,7 @@
 
 #if defined(BOARD_TYPE_PAPER_S3)
 // Global FreeType font instance used by the Paper S3 renderer.
-static FreeTypeFont *g_paper_s3_ft_font = nullptr;
+static std::unique_ptr<FreeTypeFont> g_paper_s3_ft_font;
 
 static void init_freetype_for_paper_s3(Renderer *renderer)
 {
@@ -39,17 +40,16 @@ static void init_freetype_for_paper_s3(Renderer *renderer)
     return;
   }
 
-  g_paper_s3_ft_font = new FreeTypeFont();
+  g_paper_s3_ft_font = std::make_unique<FreeTypeFont>();
   // Use a fixed pixel height similar to the original bitmap fonts.
   int pixel_height = 22;
   if (!g_paper_s3_ft_font->init("/fs/fonts/reader.ttf", pixel_height))
   {
-    delete g_paper_s3_ft_font;
-    g_paper_s3_ft_font = nullptr;
+    g_paper_s3_ft_font.reset();
     return;
   }
 
-  epd_renderer->set_freetype_font_for_reading(g_paper_s3_ft_font);
+  epd_renderer->set_freetype_font_for_reading(g_paper_s3_ft_font.get());
   epd_renderer->set_freetype_enabled(true);
 }
 #endif // BOARD_TYPE_PAPER_S3
@@ -163,9 +163,9 @@ void handleReaderMenu(Renderer *renderer, UIAction action);
 static void renderReaderMenu(Renderer *renderer);
 static void show_status_bar_toast(Renderer *renderer, const char *text);
 
-static EpubList *epub_list = nullptr;
-static EpubReader *reader = nullptr;
-static EpubToc *contents = nullptr;
+static std::unique_ptr<EpubList> epub_list;
+static std::unique_ptr<EpubReader> reader;
+static std::unique_ptr<EpubToc> contents;
 int reader_menu_selected = 0;
 bool reader_menu_advanced = false;
 static bool g_request_sleep_now = false;
@@ -219,7 +219,7 @@ void handleEpub(Renderer *renderer, UIAction action)
 {
   if (!reader)
   {
-    reader = new EpubReader(epub_list_state.epub_list[epub_list_state.selected_item], renderer);
+    reader = std::unique_ptr<EpubReader>(new EpubReader(epub_list_state.epub_list[epub_list_state.selected_item], renderer));
     reader->set_justified(justify_paragraphs);
     reader->load();
   }
@@ -248,12 +248,11 @@ void handleEpub(Renderer *renderer, UIAction action)
     ui_state = SELECTING_EPUB;
     renderer->clear_screen();
     // clear the epub reader away
-    delete reader;
-    reader = nullptr;
+    reader.reset();
     // force a redraw
     if (!epub_list)
     {
-      epub_list = new EpubList(renderer, epub_list_state);
+      epub_list = std::unique_ptr<EpubList>(new EpubList(renderer, epub_list_state));
     }
     handleEpubList(renderer, NONE, true);
     return;
@@ -268,7 +267,7 @@ void handleEpubTableContents(Renderer *renderer, UIAction action, bool needs_red
 {
   if (!contents)
   {
-    contents = new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer);
+    contents = std::unique_ptr<EpubToc>(new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer));
     contents->set_needs_redraw();
     contents->load();
   }
@@ -287,10 +286,9 @@ void handleEpubTableContents(Renderer *renderer, UIAction action, bool needs_red
     // parser state when jumping via the TOC.
     if (reader)
     {
-      delete reader;
-      reader = nullptr;
+      reader.reset();
     }
-    reader = new EpubReader(epub_list_state.epub_list[epub_list_state.selected_item], renderer);
+    reader = std::unique_ptr<EpubReader>(new EpubReader(epub_list_state.epub_list[epub_list_state.selected_item], renderer));
     reader->set_justified(justify_paragraphs);
     reader->set_state_section(contents->get_selected_toc());
     if (!reader->load())
@@ -298,14 +296,12 @@ void handleEpubTableContents(Renderer *renderer, UIAction action, bool needs_red
       ESP_LOGE(TAG, "Failed to load EPUB when opening from TOC selection");
       // Stay in the TOC view; the user can back out to the library or
       // try another entry.
-      delete reader;
-      reader = nullptr;
+      reader.reset();
       ui_state = SELECTING_TABLE_CONTENTS;
       return;
     }
     // switch to reading the epub
-    delete contents;
-    contents = nullptr;
+    contents.reset();
     handleEpub(renderer, NONE);
     return;
   case NONE:
@@ -918,14 +914,12 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
         ui_state = SELECTING_TABLE_CONTENTS;
         if (contents)
         {
-          delete contents;
-          contents = nullptr;
+          contents.reset();
         }
-        contents = new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer);
+        contents = std::unique_ptr<EpubToc>(new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer));
         if (!contents->load())
         {
-          delete contents;
-          contents = nullptr;
+          contents.reset();
           ui_state = READING_EPUB;
           renderer->clear_screen();
           if (reader)
@@ -947,8 +941,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
         show_library_loading(renderer);
         if (reader)
         {
-          delete reader;
-          reader = nullptr;
+          reader.reset();
         }
         handleEpubList(renderer, NONE, true);
       }
@@ -1135,7 +1128,7 @@ void handleEpubList(Renderer *renderer, UIAction action, bool needs_redraw)
   if (!epub_list)
   {
     ESP_LOGI("main", "Creating epub list");
-    epub_list = new EpubList(renderer, epub_list_state);
+    epub_list = std::unique_ptr<EpubList>(new EpubList(renderer, epub_list_state));
     // Paper S3 stores all EPUBs on the SD card under /fs/Books.
     if (epub_list->load("/fs/Books"))
     {
@@ -1159,11 +1152,10 @@ void handleEpubList(Renderer *renderer, UIAction action, bool needs_redraw)
     // Try to show the table of contents if the book has one; otherwise
     // fall back to opening the book directly.
     ui_state = SELECTING_TABLE_CONTENTS;
-    contents = new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer);
+    contents = std::unique_ptr<EpubToc>(new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer));
     if (!contents->load())
     {
-      delete contents;
-      contents = nullptr;
+      contents.reset();
       ui_state = READING_EPUB;
       handleEpub(renderer, NONE);
       return;
@@ -1395,7 +1387,7 @@ static void show_sleep_image(Renderer *renderer)
   int image_count = 0;
   struct dirent *ent;
 
-  while ((ent = readdir(dir)) != NULL)
+  while ((ent = readdir(dir)) != nullptr)
   {
     if (ent->d_name[0] == '.' || ent->d_type == DT_DIR)
     {
@@ -1581,7 +1573,7 @@ void main_task(void *param)
     // of the Startup preference (which only affects cold boots).
     if (!epub_list)
     {
-      epub_list = new EpubList(renderer, epub_list_state);
+      epub_list = std::unique_ptr<EpubList>(new EpubList(renderer, epub_list_state));
       epub_list->load("/fs/Books");
     }
     int last_book_index = find_last_open_book_index();
@@ -1605,7 +1597,7 @@ void main_task(void *param)
     show_library_loading(renderer);
     if (!epub_list)
     {
-      epub_list = new EpubList(renderer, epub_list_state);
+      epub_list = std::unique_ptr<EpubList>(new EpubList(renderer, epub_list_state));
       epub_list->load("/fs/Books");
     }
     if (open_last_book_on_startup)
@@ -1732,5 +1724,5 @@ void app_main()
   ESP_LOGI("main", "epub list state selected_item=%d", epub_list_state.selected_item);
 
   ESP_LOGI("main", "Memory before main task start %d", esp_get_free_heap_size());
-  xTaskCreatePinnedToCore(main_task, "main_task", 32768, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(main_task, "main_task", 32768, nullptr, 1, nullptr, 1);
 }

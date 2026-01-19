@@ -68,9 +68,9 @@ bool EpubList::load(const char *path)
   }
   DIR *dir;
   struct dirent *ent;
-  if ((dir = opendir(path)) != NULL)
+  if ((dir = opendir(path)) != nullptr)
   {
-    while ((ent = readdir(dir)) != NULL)
+    while ((ent = readdir(dir)) != nullptr)
     {
       ESP_LOGD(TAG, "Found file: %s", ent->d_name);
       // ignore any hidden files starting with "." and any directories
@@ -231,6 +231,8 @@ void EpubList::render()
   {
     return;
   }
+  // Ensure the cache directory exists.
+  ensure_cache_dir();
 
   int bottom_bar_height = EPUB_LIST_BOTTOM_BAR_HEIGHT;
   int content_height = page_height;
@@ -306,9 +308,42 @@ void EpubList::render()
         size_t image_data_size = 0;
         uint8_t *image_data = nullptr;
 
+        // Check if the cover image is cached.
         if (state.epub_list[i].cover_path[0] != '\0')
         {
-          image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+          std::string cache_path = get_cache_path(state.epub_list[i].path);
+          struct stat st;
+          if (stat(cache_path.c_str(), &st) == 0)
+          {
+             FILE *f = fopen(cache_path.c_str(), "rb");
+             if (f)
+             {
+               fseek(f, 0, SEEK_END);
+               image_data_size = ftell(f);
+               fseek(f, 0, SEEK_SET);
+               image_data = (uint8_t *)malloc(image_data_size);
+               if (image_data)
+               {
+                 fread(image_data, 1, image_data_size, f);
+               }
+               fclose(f);
+             }
+          }
+
+          if (!image_data)
+          {
+            image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+            // Cache the cover image.
+            if (image_data && image_data_size > 0)
+            {
+               FILE *f = fopen(cache_path.c_str(), "wb");
+               if (f)
+               {
+                 fwrite(image_data, 1, image_data_size, f);
+                 fclose(f);
+               }
+            }
+          }
           bool can_render = false;
           if (image_data && image_data_size > 0)
           {
@@ -412,9 +447,41 @@ void EpubList::render()
 
         bool needs_title_card = false;
 
+        // Load the cover image if it exists.
         if (state.epub_list[i].cover_path[0] != '\0')
         {
-          image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+          std::string cache_path = get_cache_path(state.epub_list[i].path);
+          struct stat st;
+          if (stat(cache_path.c_str(), &st) == 0)
+          {
+             FILE *f = fopen(cache_path.c_str(), "rb");
+             if (f)
+             {
+               fseek(f, 0, SEEK_END);
+               image_data_size = ftell(f);
+               fseek(f, 0, SEEK_SET);
+               image_data = (uint8_t *)malloc(image_data_size);
+               if (image_data)
+               {
+                 fread(image_data, 1, image_data_size, f);
+               }
+               fclose(f);
+             }
+          }
+
+          if (!image_data)
+          {
+            image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+            if (image_data && image_data_size > 0)
+            {
+               FILE *f = fopen(cache_path.c_str(), "wb");
+               if (f)
+               {
+                 fwrite(image_data, 1, image_data_size, f);
+                 fclose(f);
+               }
+            }
+          }
           bool can_render = false;
           if (image_data && image_data_size > 0)
           {
@@ -784,4 +851,26 @@ void EpubList::save_index(const char *index_path)
     }
   }
   fclose(fp);
+}
+
+std::string EpubList::get_cache_path(const char *epub_path)
+{
+  std::string s = epub_path;
+  for (size_t i = 0; i < s.length(); i++)
+  {
+    if (s[i] == '/')
+    {
+      s[i] = '_';
+    }
+  }
+  return "/fs/cache/" + s + ".raw";
+}
+
+void EpubList::ensure_cache_dir()
+{
+  struct stat st;
+  if (stat("/fs/cache", &st) != 0)
+  {
+    mkdir("/fs/cache", 0775);
+  }
 }
