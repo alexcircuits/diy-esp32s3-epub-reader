@@ -2,6 +2,9 @@
 
 #include <vector>
 #include <string>
+#include <span>
+#include <ranges>
+#include <memory>
 #include <sys/types.h>
 extern "C" {
   #include <dirent.h>

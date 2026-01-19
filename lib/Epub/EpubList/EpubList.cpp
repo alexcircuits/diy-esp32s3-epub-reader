@@ -167,9 +167,7 @@ bool EpubList::load(const char *path)
       delete epub;
     }
     closedir(dir);
-    std::sort(
-        state.epub_list,
-        state.epub_list + state.num_epubs,
+    std::ranges::sort(std::span(state.epub_list, state.num_epubs),
         [](const EpubListItem &a, const EpubListItem &b)
         {
           return strcmp(a.title, b.title) < 0;
@@ -277,7 +275,8 @@ void EpubList::render()
     int cell_width = page_width / EPUB_GRID_COLUMNS;
     int cell_height = content_height / EPUB_GRID_ROWS;
     ESP_LOGD(TAG, "Grid cell size is %dx%d", cell_width, cell_height);
-    for (int i = start_index; i < start_index + items_per_page && i < state.num_epubs; i++)
+    int end_index = std::min(start_index + items_per_page, state.num_epubs);
+    for (int i : std::views::iota(start_index, end_index))
     {
       int index_in_page = i - start_index;
       int row = index_in_page / EPUB_GRID_COLUMNS;
@@ -309,10 +308,11 @@ void EpubList::render()
         uint8_t *image_data = nullptr;
 
         // Check if the cover image is cached.
-        if (state.epub_list[i].cover_path[0] != '\0')
+          if (state.epub_list[i].cover_path[0] != '\0')
         {
           std::string cache_path = get_cache_path(state.epub_list[i].path);
           struct stat st;
+          std::vector<uint8_t> image_buffer;
           if (stat(cache_path.c_str(), &st) == 0)
           {
              FILE *f = fopen(cache_path.c_str(), "rb");
@@ -321,7 +321,8 @@ void EpubList::render()
                fseek(f, 0, SEEK_END);
                image_data_size = ftell(f);
                fseek(f, 0, SEEK_SET);
-               image_data = (uint8_t *)malloc(image_data_size);
+               image_buffer.resize(image_data_size);
+               image_data = image_buffer.data();
                if (image_data)
                {
                  fread(image_data, 1, image_data_size, f);
@@ -332,7 +333,9 @@ void EpubList::render()
 
           if (!image_data)
           {
-            image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+            image_buffer = epub.get_item_contents_as_vector(state.epub_list[i].cover_path);
+            image_data = image_buffer.data();
+            image_data_size = image_buffer.size();
             // Cache the cover image.
             if (image_data && image_data_size > 0)
             {
@@ -390,7 +393,8 @@ void EpubList::render()
             }
           }
         }
-        free(image_data);
+
+        // image_buffer goes out of scope and frees memory
         // Yield briefly while rendering a page of covers so the main
         // task does not starve the watchdog when decoding many JPEGs.
         vTaskDelay(1);
@@ -430,7 +434,8 @@ void EpubList::render()
     int cell_height = content_height / EPUB_LIST_ITEMS_PER_PAGE;
     ESP_LOGD(TAG, "Cell height is %d", cell_height);
     int ypos = 0;
-    for (int i = start_index; i < start_index + EPUB_LIST_ITEMS_PER_PAGE && i < state.num_epubs; i++)
+    int end_index = std::min(start_index + EPUB_LIST_ITEMS_PER_PAGE, state.num_epubs);
+    for (int i : std::views::iota(start_index, end_index))
     {
       // do we need to draw a new page of items?
       if (current_page != state.previous_rendered_page)
@@ -452,6 +457,7 @@ void EpubList::render()
         {
           std::string cache_path = get_cache_path(state.epub_list[i].path);
           struct stat st;
+          std::vector<uint8_t> image_buffer;
           if (stat(cache_path.c_str(), &st) == 0)
           {
              FILE *f = fopen(cache_path.c_str(), "rb");
@@ -460,7 +466,8 @@ void EpubList::render()
                fseek(f, 0, SEEK_END);
                image_data_size = ftell(f);
                fseek(f, 0, SEEK_SET);
-               image_data = (uint8_t *)malloc(image_data_size);
+               image_buffer.resize(image_data_size);
+               image_data = image_buffer.data();
                if (image_data)
                {
                  fread(image_data, 1, image_data_size, f);
@@ -471,7 +478,10 @@ void EpubList::render()
 
           if (!image_data)
           {
-            image_data = epub.get_item_contents(state.epub_list[i].cover_path, &image_data_size);
+            image_buffer = epub.get_item_contents_as_vector(state.epub_list[i].cover_path);
+            image_data = image_buffer.data();
+            image_data_size = image_buffer.size();
+
             if (image_data && image_data_size > 0)
             {
                FILE *f = fopen(cache_path.c_str(), "wb");
@@ -528,7 +538,8 @@ void EpubList::render()
             }
           }
         }
-        free(image_data);
+
+        // image_buffer frees memory
         // draw the title
         int text_xpos = image_xpos + image_width + PADDING;
         int text_ypos = ypos + PADDING / 2;

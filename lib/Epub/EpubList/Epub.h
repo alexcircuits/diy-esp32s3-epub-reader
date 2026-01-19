@@ -52,6 +52,7 @@ public:
   const std::string &get_title();
   const std::string &get_cover_image_item();
   uint8_t *get_item_contents(const std::string &item_href, size_t *size = nullptr);
+  std::vector<uint8_t> get_item_contents_as_vector(const std::string &item_href);
 
   std::string &get_spine_item(int spine_index);
   int get_spine_item_id(std::string spine_key);

@@ -10,6 +10,9 @@
 #include <ctype.h>
 #include <esp_random.h>
 #include <memory>
+#include <span>
+#include <ranges>
+#include <vector>
 #include "config.h"
 #include "EpubList/Epub.h"
 #include "EpubList/EpubList.h"
@@ -70,17 +73,17 @@ extern "C"
 
 const char *TAG = "main";
 
-typedef enum
+enum class UIState
 {
   SELECTING_EPUB,
   SELECTING_TABLE_CONTENTS,
   READING_EPUB,
   READING_MENU
-} UIState;
+};
 
 // Default UI state: show the EPUB list on startup. We no longer store this in
 // RTC slow memory; EPUB metadata and selection are persisted via /fs/books_index.bin.
-UIState ui_state = SELECTING_EPUB;
+UIState ui_state = UIState::SELECTING_EPUB;
 // State data for the EPUB list and reader.
 EpubListState epub_list_state = {};
 // State data for the EPUB index list.
@@ -96,42 +99,42 @@ bool open_last_book_on_startup = true;
 bool invert_tap_zones = false;
 bool justify_paragraphs = false;
 
-const int READER_MENU_BASIC_ITEMS = 6;
-const int READER_MENU_ADVANCED_ITEMS = 10;
+constexpr int READER_MENU_BASIC_ITEMS = 6;
+constexpr int READER_MENU_ADVANCED_ITEMS = 10;
 
-typedef enum
+enum class SleepImageMode
 {
-  SLEEP_IMAGE_COVER,
-  SLEEP_IMAGE_RANDOM,
-  SLEEP_IMAGE_OFF
-} SleepImageMode;
+  COVER,
+  RANDOM,
+  OFF
+};
 
-SleepImageMode sleep_image_mode = SLEEP_IMAGE_COVER;
+SleepImageMode sleep_image_mode = SleepImageMode::COVER;
 
-typedef enum
+enum class IdleProfile
 {
-  IDLE_PROFILE_SHORT = 0,
-  IDLE_PROFILE_NORMAL = 1,
-  IDLE_PROFILE_LONG = 2
-} IdleProfile;
+  SHORT = 0,
+  NORMAL = 1,
+  LONG = 2
+};
 
-typedef enum
+enum class MarginProfile
 {
-  MARGIN_PROFILE_NARROW = 0,
-  MARGIN_PROFILE_NORMAL = 1,
-  MARGIN_PROFILE_WIDE = 2
-} MarginProfile;
+  NARROW = 0,
+  NORMAL = 1,
+  WIDE = 2
+};
 
-typedef enum
+enum class GestureSensitivity
 {
-  GESTURE_SENS_LOW = 0,
-  GESTURE_SENS_MEDIUM = 1,
-  GESTURE_SENS_HIGH = 2
-} GestureSensitivity;
+  LOW = 0,
+  MEDIUM = 1,
+  HIGH = 2
+};
 
-IdleProfile idle_profile = IDLE_PROFILE_NORMAL;
-MarginProfile margin_profile = MARGIN_PROFILE_NORMAL;
-GestureSensitivity gesture_sensitivity = GESTURE_SENS_MEDIUM;
+IdleProfile idle_profile = IdleProfile::NORMAL;
+MarginProfile margin_profile = MarginProfile::NORMAL;
+GestureSensitivity gesture_sensitivity = GestureSensitivity::MEDIUM;
 
 int64_t idle_timeout_reading_us = 60 * 1000 * 1000;
 int64_t idle_timeout_library_us = 60 * 1000 * 1000;
@@ -173,9 +176,10 @@ static bool g_request_sleep_now = false;
 static int find_last_open_book_index()
 {
   int last_index = -1;
-  for (int i = 0; i < epub_list_state.num_epubs; i++)
+  auto items = std::span(epub_list_state.epub_list, epub_list_state.num_epubs);
+  
+  for (auto const [i, item] : std::views::enumerate(items))
   {
-    EpubListItem &item = epub_list_state.epub_list[i];
     if (item.current_section != 0 || item.current_page != 0)
     {
       if (last_index < 0)
@@ -193,19 +197,15 @@ static int find_last_open_book_index()
       }
     }
   }
+
   if (last_index >= 0)
   {
     return last_index;
   }
 
-  // Fallback: no book has recorded section/page progress yet. This can
-  // happen if the user opened a brand-new book and went to sleep on the
-  // very first page (section 0, page 0). In that case, treat any book
-  // that has been laid out at least once (pages_in_current_section > 0)
-  // as a candidate and pick the first such entry.
-  for (int i = 0; i < epub_list_state.num_epubs; i++)
+  // Fallback: candidate matching
+  for (auto const [i, item] : std::views::enumerate(items))
   {
-    EpubListItem &item = epub_list_state.epub_list[i];
     if (item.pages_in_current_section > 0)
     {
       return i;
@@ -245,7 +245,7 @@ void handleEpub(Renderer *renderer, UIAction action)
     break;
   case SELECT:
     // switch back to main screen
-    ui_state = SELECTING_EPUB;
+    ui_state = UIState::SELECTING_EPUB;
     renderer->clear_screen();
     // clear the epub reader away
     reader.reset();
@@ -281,7 +281,7 @@ void handleEpubTableContents(Renderer *renderer, UIAction action, bool needs_red
     break;
   case SELECT:
     // setup the reader state
-    ui_state = READING_EPUB;
+    ui_state = UIState::READING_EPUB;
     // Replace any existing reader so we don't leak or reuse stale
     // parser state when jumping via the TOC.
     if (reader)
@@ -297,7 +297,7 @@ void handleEpubTableContents(Renderer *renderer, UIAction action, bool needs_red
       // Stay in the TOC view; the user can back out to the library or
       // try another entry.
       reader.reset();
-      ui_state = SELECTING_TABLE_CONTENTS;
+      ui_state = UIState::SELECTING_TABLE_CONTENTS;
       return;
     }
     // switch to reading the epub
@@ -353,11 +353,11 @@ static void renderReaderMenu(Renderer *renderer)
     labels[2] = buf_startup;
 
     const char *sleep_mode_str = "Cover";
-    if (sleep_image_mode == SLEEP_IMAGE_RANDOM)
+    if (sleep_image_mode == SleepImageMode::RANDOM)
     {
       sleep_mode_str = "Random";
     }
-    else if (sleep_image_mode == SLEEP_IMAGE_OFF)
+    else if (sleep_image_mode == SleepImageMode::OFF)
     {
       sleep_mode_str = "Off";
     }
@@ -388,11 +388,11 @@ static void renderReaderMenu(Renderer *renderer)
     labels[6] = buf_tap;
 
     const char *idle_str = "Normal";
-    if (idle_profile == IDLE_PROFILE_SHORT)
+    if (idle_profile == IdleProfile::SHORT)
     {
       idle_str = "Short";
     }
-    else if (idle_profile == IDLE_PROFILE_LONG)
+    else if (idle_profile == IdleProfile::LONG)
     {
       idle_str = "Long";
     }
@@ -400,11 +400,11 @@ static void renderReaderMenu(Renderer *renderer)
     labels[7] = buf_idle;
 
     const char *margin_str = "Normal";
-    if (margin_profile == MARGIN_PROFILE_NARROW)
+    if (margin_profile == MarginProfile::NARROW)
     {
       margin_str = "Narrow";
     }
-    else if (margin_profile == MARGIN_PROFILE_WIDE)
+    else if (margin_profile == MarginProfile::WIDE)
     {
       margin_str = "Wide";
     }
@@ -412,11 +412,11 @@ static void renderReaderMenu(Renderer *renderer)
     labels[8] = buf_margin;
 
     const char *gest_str = "Medium";
-    if (gesture_sensitivity == GESTURE_SENS_LOW)
+    if (gesture_sensitivity == GestureSensitivity::LOW)
     {
       gest_str = "Low";
     }
-    else if (gesture_sensitivity == GESTURE_SENS_HIGH)
+    else if (gesture_sensitivity == GestureSensitivity::HIGH)
     {
       gest_str = "High";
     }
@@ -580,7 +580,7 @@ static void renderReaderMenu(Renderer *renderer)
   {
     int bar_y = page_height - bottom_bar_height;
     renderer->fill_rect(0, bar_y, page_width, bottom_bar_height, 255);
-    int center_x = page_width / 2;
+    // int center_x = page_width / 2;
     int center_y = bar_y + bottom_bar_height / 2;
 
     int page_display = current_page + 1;
@@ -742,18 +742,18 @@ static void load_app_settings(Renderer *renderer)
   open_last_book_on_startup = (s.flags & 0x4) != 0;
   invert_tap_zones = (s.flags & 0x8) != 0;
   uint8_t margin_bits = (s.flags >> 4) & 0x3;
-  if (margin_bits <= MARGIN_PROFILE_WIDE)
+  if (margin_bits <= static_cast<uint8_t>(MarginProfile::WIDE))
   {
-    margin_profile = (MarginProfile)margin_bits;
+    margin_profile = static_cast<MarginProfile>(margin_bits);
   }
   uint8_t idle_bits = (s.flags >> 6) & 0x3;
-  if (idle_bits <= IDLE_PROFILE_LONG)
+  if (idle_bits <= static_cast<uint8_t>(IdleProfile::LONG))
   {
-    idle_profile = (IdleProfile)idle_bits;
+    idle_profile = static_cast<IdleProfile>(idle_bits);
   }
-  if (s.sleep_mode <= SLEEP_IMAGE_OFF)
+  if (s.sleep_mode <= static_cast<uint8_t>(SleepImageMode::OFF))
   {
-    sleep_image_mode = (SleepImageMode)s.sleep_mode;
+    sleep_image_mode = static_cast<SleepImageMode>(s.sleep_mode);
   }
 #ifdef USE_FREETYPE
   if (s.reading_font_px > 0)
@@ -761,7 +761,7 @@ static void load_app_settings(Renderer *renderer)
     renderer->set_reading_font_pixel_height(s.reading_font_px);
   }
 #endif
-  gesture_sensitivity = (GestureSensitivity)(s.reserved & 0x3);
+  gesture_sensitivity = static_cast<GestureSensitivity>(s.reserved & 0x3);
   // Bit 2 of reserved stores the paragraph alignment preference.
   justify_paragraphs = (s.reserved & 0x4) != 0;
   apply_idle_profile();
@@ -789,9 +789,9 @@ static void save_app_settings(Renderer *renderer)
   {
     s.flags |= 0x8;
   }
-  s.flags |= (((uint8_t)margin_profile) & 0x3) << 4;
-  s.flags |= (((uint8_t)idle_profile) & 0x3) << 6;
-  s.sleep_mode = (uint8_t)sleep_image_mode;
+  s.flags |= (static_cast<uint8_t>(margin_profile) & 0x3) << 4;
+  s.flags |= (static_cast<uint8_t>(idle_profile) & 0x3) << 6;
+  s.sleep_mode = static_cast<uint8_t>(sleep_image_mode);
 #ifdef USE_FREETYPE
   int px = renderer->get_reading_font_pixel_height();
   if (px > 0)
@@ -799,7 +799,7 @@ static void save_app_settings(Renderer *renderer)
     s.reading_font_px = (int16_t)px;
   }
 #endif
-  s.reserved = (uint8_t)gesture_sensitivity;
+  s.reserved = static_cast<uint8_t>(gesture_sensitivity);
   if (justify_paragraphs)
   {
     s.reserved |= 0x4;
@@ -817,15 +817,15 @@ static void apply_idle_profile()
 {
   switch (idle_profile)
   {
-  case IDLE_PROFILE_SHORT:
+  case IdleProfile::SHORT:
     idle_timeout_reading_us = 10 * 60 * 1000 * 1000;
     idle_timeout_library_us = 2 * 60 * 1000 * 1000;
     break;
-  case IDLE_PROFILE_LONG:
+  case IdleProfile::LONG:
     idle_timeout_reading_us = 40LL * 60 * 1000 * 1000;
     idle_timeout_library_us = 10LL * 60 * 1000 * 1000;
     break;
-  case IDLE_PROFILE_NORMAL:
+  case IdleProfile::NORMAL:
   default:
     idle_timeout_reading_us = 20 * 60 * 1000 * 1000;
     idle_timeout_library_us = 5 * 60 * 1000 * 1000;
@@ -839,15 +839,15 @@ static void apply_page_margins(Renderer *renderer)
   int right = 10;
   switch (margin_profile)
   {
-  case MARGIN_PROFILE_NARROW:
+  case MarginProfile::NARROW:
     left = 5;
     right = 5;
     break;
-  case MARGIN_PROFILE_WIDE:
+  case MarginProfile::WIDE:
     left = 20;
     right = 20;
     break;
-  case MARGIN_PROFILE_NORMAL:
+  case MarginProfile::NORMAL:
   default:
     left = 10;
     right = 10;
@@ -863,13 +863,13 @@ static void apply_gesture_profile()
   int profile = 1;
   switch (gesture_sensitivity)
   {
-  case GESTURE_SENS_LOW:
+  case GestureSensitivity::LOW:
     profile = 0;
     break;
-  case GESTURE_SENS_HIGH:
+  case GestureSensitivity::HIGH:
     profile = 2;
     break;
-  case GESTURE_SENS_MEDIUM:
+  case GestureSensitivity::MEDIUM:
   default:
     profile = 1;
     break;
@@ -902,7 +902,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
     {
       if (reader_menu_selected == 0)
       {
-        ui_state = READING_EPUB;
+        ui_state = UIState::READING_EPUB;
         renderer->clear_screen();
         if (reader)
         {
@@ -911,7 +911,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       }
       else if (reader_menu_selected == 1)
       {
-        ui_state = SELECTING_TABLE_CONTENTS;
+        ui_state = UIState::SELECTING_TABLE_CONTENTS;
         if (contents)
         {
           contents.reset();
@@ -920,7 +920,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
         if (!contents->load())
         {
           contents.reset();
-          ui_state = READING_EPUB;
+          ui_state = UIState::READING_EPUB;
           renderer->clear_screen();
           if (reader)
           {
@@ -936,7 +936,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
         // Back to library: force a full-screen refresh and show the
         // same "Book library is loading" splash used on cold boot
         // while the EPUB list is (re)rendered.
-        ui_state = SELECTING_EPUB;
+        ui_state = UIState::SELECTING_EPUB;
         renderer->reset();
         show_library_loading(renderer);
         if (reader)
@@ -955,7 +955,7 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       {
         // Full screen refresh of the current reading page to
         // mitigate ghosting.
-        ui_state = READING_EPUB;
+        ui_state = UIState::READING_EPUB;
         renderer->reset();
         if (reader)
         {
@@ -1001,17 +1001,17 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       {
         switch (sleep_image_mode)
         {
-        case SLEEP_IMAGE_COVER:
-          sleep_image_mode = SLEEP_IMAGE_RANDOM;
+        case SleepImageMode::COVER:
+          sleep_image_mode = SleepImageMode::RANDOM;
           show_status_bar_toast(renderer, "Sleep image: Random");
           break;
-        case SLEEP_IMAGE_RANDOM:
-          sleep_image_mode = SLEEP_IMAGE_OFF;
+        case SleepImageMode::RANDOM:
+          sleep_image_mode = SleepImageMode::OFF;
           show_status_bar_toast(renderer, "Sleep image: Off");
           break;
-        case SLEEP_IMAGE_OFF:
+        case SleepImageMode::OFF:
         default:
-          sleep_image_mode = SLEEP_IMAGE_COVER;
+          sleep_image_mode = SleepImageMode::COVER;
           show_status_bar_toast(renderer, "Sleep image: Cover");
           break;
         }
@@ -1064,15 +1064,15 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       }
       else if (reader_menu_selected == 7)
       {
-        idle_profile = (IdleProfile)(((int)idle_profile + 1) % 3);
+        idle_profile = static_cast<IdleProfile>(((int)idle_profile + 1) % 3);
         apply_idle_profile();
         save_app_settings(renderer);
         const char *label = "Idle: Normal";
-        if (idle_profile == IDLE_PROFILE_SHORT)
+        if (idle_profile == IdleProfile::SHORT)
         {
           label = "Idle: Short";
         }
-        else if (idle_profile == IDLE_PROFILE_LONG)
+        else if (idle_profile == IdleProfile::LONG)
         {
           label = "Idle: Long";
         }
@@ -1081,15 +1081,15 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       }
       else if (reader_menu_selected == 8)
       {
-        margin_profile = (MarginProfile)(((int)margin_profile + 1) % 3);
+        margin_profile = static_cast<MarginProfile>(((int)margin_profile + 1) % 3);
         apply_page_margins(renderer);
         save_app_settings(renderer);
         const char *label = "Margins: Normal";
-        if (margin_profile == MARGIN_PROFILE_NARROW)
+        if (margin_profile == MarginProfile::NARROW)
         {
           label = "Margins: Narrow";
         }
-        else if (margin_profile == MARGIN_PROFILE_WIDE)
+        else if (margin_profile == MarginProfile::WIDE)
         {
           label = "Margins: Wide";
         }
@@ -1098,15 +1098,15 @@ void handleReaderMenu(Renderer *renderer, UIAction action)
       }
       else if (reader_menu_selected == 9)
       {
-        gesture_sensitivity = (GestureSensitivity)(((int)gesture_sensitivity + 1) % 3);
+        gesture_sensitivity = static_cast<GestureSensitivity>(((int)gesture_sensitivity + 1) % 3);
         apply_gesture_profile();
         save_app_settings(renderer);
         const char *label = "Gestures: Medium";
-        if (gesture_sensitivity == GESTURE_SENS_LOW)
+        if (gesture_sensitivity == GestureSensitivity::LOW)
         {
           label = "Gestures: Low";
         }
-        else if (gesture_sensitivity == GESTURE_SENS_HIGH)
+        else if (gesture_sensitivity == GestureSensitivity::HIGH)
         {
           label = "Gestures: High";
         }
@@ -1151,12 +1151,12 @@ void handleEpubList(Renderer *renderer, UIAction action, bool needs_redraw)
   case SELECT:
     // Try to show the table of contents if the book has one; otherwise
     // fall back to opening the book directly.
-    ui_state = SELECTING_TABLE_CONTENTS;
+    ui_state = UIState::SELECTING_TABLE_CONTENTS;
     contents = std::unique_ptr<EpubToc>(new EpubToc(epub_list_state.epub_list[epub_list_state.selected_item], epub_index_state, renderer));
     if (!contents->load())
     {
       contents.reset();
-      ui_state = READING_EPUB;
+      ui_state = UIState::READING_EPUB;
       handleEpub(renderer, NONE);
       return;
     }
@@ -1174,7 +1174,7 @@ void handleEpubList(Renderer *renderer, UIAction action, bool needs_redraw)
 void handleUserInteraction(Renderer *renderer, UIAction ui_action, bool needs_redraw)
 {
   // Global handling for status bar toggle while reading.
-  if (ui_action == TOGGLE_STATUS_BAR && ui_state == READING_EPUB)
+  if (ui_action == TOGGLE_STATUS_BAR && ui_state == UIState::READING_EPUB)
   {
     status_bar_visible = !status_bar_visible;
     save_app_settings(renderer);
@@ -1187,9 +1187,9 @@ void handleUserInteraction(Renderer *renderer, UIAction ui_action, bool needs_re
 
   // From the library view, allow a gesture (e.g. two-finger swipe up)
   // to open the reader menu directly, focusing on advanced settings.
-  if (ui_action == OPEN_READER_MENU && ui_state == SELECTING_EPUB)
+  if (ui_action == OPEN_READER_MENU && ui_state == UIState::SELECTING_EPUB)
   {
-    ui_state = READING_MENU;
+    ui_state = UIState::READING_MENU;
     reader_menu_advanced = true;
     reader_menu_selected = 0;
     renderReaderMenu(renderer);
@@ -1198,13 +1198,13 @@ void handleUserInteraction(Renderer *renderer, UIAction ui_action, bool needs_re
 
   switch (ui_state)
   {
-  case READING_MENU:
+  case UIState::READING_MENU:
     handleReaderMenu(renderer, ui_action);
     break;
-  case READING_EPUB:
+  case UIState::READING_EPUB:
     if (ui_action == SELECT)
     {
-      ui_state = READING_MENU;
+      ui_state = UIState::READING_MENU;
       reader_menu_selected = 0;
       renderReaderMenu(renderer);
     }
@@ -1213,10 +1213,10 @@ void handleUserInteraction(Renderer *renderer, UIAction ui_action, bool needs_re
       handleEpub(renderer, ui_action);
     }
     break;
-  case SELECTING_TABLE_CONTENTS:
+  case UIState::SELECTING_TABLE_CONTENTS:
     handleEpubTableContents(renderer, ui_action, needs_redraw);
     break;
-  case SELECTING_EPUB:
+  case UIState::SELECTING_EPUB:
   default:
     handleEpubList(renderer, ui_action, needs_redraw);
     break;
@@ -1286,7 +1286,7 @@ static void show_sleep_cover(Renderer *renderer)
   int book_index = -1;
   if (epub_list_state.num_epubs > 0)
   {
-    if (ui_state == READING_EPUB || ui_state == READING_MENU || ui_state == SELECTING_TABLE_CONTENTS)
+    if (ui_state == UIState::READING_EPUB || ui_state == UIState::READING_MENU || ui_state == UIState::SELECTING_TABLE_CONTENTS)
     {
       book_index = epub_list_state.selected_item;
     }
@@ -1348,18 +1348,18 @@ static void show_sleep_cover(Renderer *renderer)
 
 static void show_sleep_image(Renderer *renderer)
 {
-  if (sleep_image_mode == SLEEP_IMAGE_OFF)
+  if (sleep_image_mode == SleepImageMode::OFF)
   {
     return;
   }
 
-  if (sleep_image_mode == SLEEP_IMAGE_COVER)
+  if (sleep_image_mode == SleepImageMode::COVER)
   {
     show_sleep_cover(renderer);
     return;
   }
 
-  if (sleep_image_mode != SLEEP_IMAGE_RANDOM)
+  if (sleep_image_mode != SleepImageMode::RANDOM)
   {
     return;
   }
@@ -1467,8 +1467,8 @@ static void show_sleep_image(Renderer *renderer)
     return;
   }
 
-  uint8_t *data = (uint8_t *)malloc((size_t)size);
-  if (!data)
+  std::vector<uint8_t> data(size);
+  if (data.empty())
   {
     fclose(fp);
     ESP_LOGW("main", "Failed to allocate memory for sleep image");
@@ -1476,11 +1476,10 @@ static void show_sleep_image(Renderer *renderer)
     return;
   }
 
-  size_t read = fread(data, 1, (size_t)size, fp);
+  size_t read = fread(data.data(), 1, (size_t)size, fp);
   fclose(fp);
   if (read != (size_t)size)
   {
-    free(data);
     ESP_LOGW("main", "Failed to read full sleep image");
     show_sleep_cover(renderer);
     return;
@@ -1488,10 +1487,9 @@ static void show_sleep_image(Renderer *renderer)
 
   int img_w = 0;
   int img_h = 0;
-  bool can_render = renderer->get_image_size(sleep_image_path, data, (size_t)size, &img_w, &img_h);
+  bool can_render = renderer->get_image_size(sleep_image_path, data.data(), (size_t)size, &img_w, &img_h);
   if (!can_render || img_w <= 0 || img_h <= 0)
   {
-    free(data);
     ESP_LOGW("main", "Sleep image decode failed: %s", sleep_image_path);
     show_sleep_cover(renderer);
     return;
@@ -1510,9 +1508,8 @@ static void show_sleep_image(Renderer *renderer)
   // For sleep images we do not want to show the generic cover placeholder
   // if decoding fails; just leave the screen as-is in that case.
   renderer->set_image_placeholder_enabled(false);
-  renderer->draw_image(sleep_image_path, data, (size_t)size, 0, 0, width, height);
+  renderer->draw_image(sleep_image_path, data.data(), (size_t)size, 0, 0, width, height);
   renderer->set_image_placeholder_enabled(true);
-  free(data);
   renderer->flush_display();
 }
 
@@ -1580,7 +1577,7 @@ void main_task(void *param)
     if (last_book_index >= 0)
     {
       epub_list_state.selected_item = last_book_index;
-      ui_state = READING_EPUB;
+      ui_state = UIState::READING_EPUB;
       // Ignore any deep-sleep button action on Paper S3 (there
       // are no navigation buttons); we just want to render the
       // last-opened page.
@@ -1606,7 +1603,7 @@ void main_task(void *param)
       if (last_book_index >= 0)
       {
         epub_list_state.selected_item = last_book_index;
-        ui_state = READING_EPUB;
+        ui_state = UIState::READING_EPUB;
       }
     }
     // make sure the UI is in the right state
@@ -1633,7 +1630,7 @@ void main_task(void *param)
       break;
     }
 
-    bool in_reading_context = (ui_state == READING_EPUB || ui_state == READING_MENU || ui_state == SELECTING_TABLE_CONTENTS);
+    bool in_reading_context = (ui_state == UIState::READING_EPUB || ui_state == UIState::READING_MENU || ui_state == UIState::SELECTING_TABLE_CONTENTS);
     int64_t idle_timeout_us = in_reading_context ? idle_timeout_reading_us : idle_timeout_library_us;
     if (esp_timer_get_time() - last_user_interaction >= idle_timeout_us)
     {

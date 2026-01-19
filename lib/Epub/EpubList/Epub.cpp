@@ -408,3 +408,16 @@ int Epub::get_spine_index_for_toc_index(int toc_index)
   // not found - default to the start of the book
   return 0;
 }
+
+std::vector<uint8_t> Epub::get_item_contents_as_vector(const std::string &item_href)
+{
+  size_t size = 0;
+  uint8_t *data = get_item_contents(item_href, &size);
+  if (!data)
+  {
+    return {};
+  }
+  std::vector<uint8_t> vec(data, data + size);
+  free(data);
+  return vec;
+}
