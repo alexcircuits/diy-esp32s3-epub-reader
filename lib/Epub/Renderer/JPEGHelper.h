@@ -2,6 +2,7 @@
 
 #include <tjpgd.h>
 #include <string>
+#include <vector>
 #include "ImageHelper.h"
 
 size_t read_jpeg_data(
@@ -26,7 +27,9 @@ private:
   // temporary vars used for the JPEG callbacks
   const uint8_t *m_data;
   size_t m_data_pos;
+
   size_t m_data_size;
+  std::vector<uint8_t> m_gray_buffer;
 
   Renderer *renderer;
   int x_pos;

@@ -214,6 +214,66 @@ public:
     needs_gray(corrected_color);
     epd_draw_pixel(x + margin_left, y + margin_top, corrected_color, m_frame_buffer);
   }
+  virtual void draw_pixels(int x, int y, int width, int height, const uint8_t *data) override
+  {
+      if (width <= 0 || height <= 0) return;
+      
+      // Calculate adjusted bounds within the display area
+      int start_x = x + margin_left;
+      int start_y = y + margin_top;
+
+      // Inverted portrait rotation for Paper S3:
+      // Logical (x, y) maps to physical (EPD_WIDTH - 1 - y, x)
+      // Since EPD_ROT_INVERTED_PORTRAIT is set, epd_draw_pixel does this transform.
+      // We want to write directly to m_frame_buffer (which is physical landscape, EPD_WIDTH x EPD_HEIGHT).
+      
+      // BUT: Epdiy's m_frame_buffer is 1 byte per pixel. Physical layout is row-major.
+      // Physical Resolution: 960x540.
+      // Logical Resolution: 540x960.
+      
+      // The epd_draw_pixel implementation for EPD_ROT_INVERTED_PORTRAIT:
+      // _epd_draw_pixel(EPD_WIDTH - 1 - y, x, color, framebuffer);
+      // Where EPD_WIDTH = 960 (physical width).
+      
+      // So for a logical block at (start_x, start_y) of size (width, height):
+      // Logical x varies: start_x to start_x + width - 1
+      // Logical y varies: start_y to start_y + height - 1
+      
+      // Physical x = EPD_WIDTH - 1 - logical_y
+      // Physical y = logical_x
+      
+      // This means a logical row (constant logical y, varying logical x) becomes a vertical column in physical memory.
+      // A logical column (constant logical x, varying logical y) becomes a horizontal row in physical memory (reversed).
+      
+      // Optimizing this block transfer is tricky because it's not contiguous in physical memory.
+      // However, we can avoid the function call overhead and duplicate gamma lookup.
+      
+      needs_gray_flush = true; // Assume we are drawing non-white/black pixels
+      
+      for (int dy = 0; dy < height; ++dy)
+      {
+          int logical_y = start_y + dy;
+          // Pre-calculate physical X for this row
+          int phys_x = EPD_WIDTH - 1 - logical_y;
+          
+          if (phys_x < 0 || phys_x >= EPD_WIDTH) continue;
+
+          for (int dx = 0; dx < width; ++dx)
+          {
+             int logical_x = start_x + dx;
+             int phys_y = logical_x;
+             
+             if (phys_y < 0 || phys_y >= EPD_HEIGHT) continue;
+             
+             uint8_t color = data[dy * width + dx];
+             
+             // Direct framebuffer access
+             // Framebuffer is EPD_WIDTH * EPD_HEIGHT bytes
+             // Index = phys_y * EPD_WIDTH + phys_x
+             m_frame_buffer[phys_y * EPD_WIDTH + phys_x] = gamma_curve[color];
+          }
+      }
+  }
   virtual void draw_circle(int x, int y, int r, uint8_t color = 0)
   {
     needs_gray(color);

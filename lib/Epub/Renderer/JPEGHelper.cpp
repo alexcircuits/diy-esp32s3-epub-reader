@@ -182,16 +182,50 @@ int draw_jpeg_function(
     vTaskDelay(1);
   }
 
-  for (int y = rect->top; y <= rect->bottom; y++)
+  // Check if we can use the optimized batch drawing (1:1 scaling)
+  bool fast_path = (context->x_scale > 0.99f && context->x_scale < 1.01f && 
+                    context->y_scale > 0.99f && context->y_scale < 1.01f);
+
+  if (fast_path)
   {
-    for (int x = rect->left; x <= rect->right; x++)
-    {
-      uint8_t r = *rgb++;
-      uint8_t g = *rgb++;
-      uint8_t b = *rgb++;
-      uint32_t gray = (r * 38 + g * 75 + b * 15) >> 7;
-      renderer->draw_pixel(context->x_pos + x * context->x_scale, context->y_pos + y * context->y_scale, gray);
-    }
+      int w = rect->right - rect->left + 1;
+      int h = rect->bottom - rect->top + 1;
+      
+      // Ensure buffer is large enough
+      if (context->m_gray_buffer.size() < (size_t)(w * h)) {
+          context->m_gray_buffer.resize(w * h);
+      }
+      
+      uint8_t *gray_ptr = context->m_gray_buffer.data();
+      
+      for (int i = 0; i < w * h; ++i)
+      {
+          uint8_t r = *rgb++;
+          uint8_t g = *rgb++;
+          uint8_t b = *rgb++;
+          // Fast integer approximation of grayscale
+          *gray_ptr++ = (r * 38 + g * 75 + b * 15) >> 7;
+      }
+      
+      // Call optimized batch drawer
+      // Note: rect->left/top are relative to the *decoded* image
+      // We need to offset by x_pos/y_pos
+      // Since scale is 1, coordinates map directly
+      renderer->draw_pixels(context->x_pos + rect->left, context->y_pos + rect->top, w, h, context->m_gray_buffer.data());
+  }
+  else
+  {
+      for (int y = rect->top; y <= rect->bottom; y++)
+      {
+        for (int x = rect->left; x <= rect->right; x++)
+        {
+          uint8_t r = *rgb++;
+          uint8_t g = *rgb++;
+          uint8_t b = *rgb++;
+          uint32_t gray = (r * 38 + g * 75 + b * 15) >> 7;
+          renderer->draw_pixel(context->x_pos + x * context->x_scale, context->y_pos + y * context->y_scale, gray);
+        }
+      }
   }
   return 1;
 }

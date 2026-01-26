@@ -31,6 +31,13 @@ public:
   virtual void draw_image(const std::string &filename, const uint8_t *data, size_t data_size, int x, int y, int width, int height);
   virtual bool get_image_size(const std::string &filename, const uint8_t *data, size_t data_size, int *width, int *height);
   virtual void draw_pixel(int x, int y, uint8_t color) = 0;
+  virtual void draw_pixels(int x, int y, int width, int height, const uint8_t *data) {
+      for (int dy = 0; dy < height; ++dy) {
+          for (int dx = 0; dx < width; ++dx) {
+              draw_pixel(x + dx, y + dy, data[dy * width + dx]);
+          }
+      }
+  }
   virtual int get_text_width(const char *text, bool bold = false, bool italic = false) = 0;
   virtual void draw_text(int x, int y, const char *text, bool bold = false, bool italic = false) = 0;
   virtual void draw_text_box(const std::string &text, int x, int y, int width, int height, bool bold = false, bool italic = false);

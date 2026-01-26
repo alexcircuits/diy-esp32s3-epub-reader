@@ -72,18 +72,15 @@ void pngle_draw_callback(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uin
     sy1 = sy0 + 1;
   }
 
-  for (int yy = sy0; yy < sy1; ++yy)
+  // Optimize: Use batch fill_rect instead of pixel-by-pixel
+  helper->renderer->fill_rect(sx0, sy0, sx1 - sx0, sy1 - sy0, gray8);
+
+  // Feed watchdog if needed (less frequently than per-pixel)
+  int64_t now = esp_timer_get_time();
+  if (now - helper->last_yield_time > 50000)
   {
-    int64_t now = esp_timer_get_time();
-    if (now - helper->last_yield_time > 50000)
-    {
-      vTaskDelay(1);
-      helper->last_yield_time = now;
-    }
-    for (int xx = sx0; xx < sx1; ++xx)
-    {
-      helper->renderer->draw_pixel(xx, yy, gray8);
-    }
+    vTaskDelay(1);
+    helper->last_yield_time = now;
   }
 }
 

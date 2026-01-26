@@ -22,10 +22,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f7f3c10d-a428-4fa8-93c8-f0223a6b868e" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/Epub/EpubList/EpubList.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/EpubList/EpubList.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/Epub/EpubList/EpubList.h" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/EpubList/EpubList.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/Epub/Renderer/EpdiyFrameBufferRenderer.h" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/Renderer/EpdiyFrameBufferRenderer.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/Epub/Renderer/JPEGHelper.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/Renderer/JPEGHelper.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/Epub/Renderer/JPEGHelper.h" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/Renderer/JPEGHelper.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/Epub/Renderer/PNGHelper.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/Renderer/PNGHelper.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/Epub/Renderer/Renderer.h" beforeDir="false" afterPath="$PROJECT_DIR$/lib/Epub/Renderer/Renderer.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/partitions.csv" beforeDir="false" afterPath="$PROJECT_DIR$/partitions.csv" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,28 +62,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "PlatformIO.PlatformIO.executor": "Profiler",
-    "RunOnceActivity.RadMigrateCodeStyle": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/oleksandrchepkov/Documents/diy-esp32s3-epub-reader-main",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;PlatformIO.PlatformIO.executor&quot;: &quot;Profiler&quot;,
+    &quot;RunOnceActivity.RadMigrateCodeStyle&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;experimental/performance-opt&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/oleksandrchepkov/Documents/diy-esp32s3-epub-reader-main&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="diy-esp32s3-epub-reader-main" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
       <method v="2" />
@@ -94,6 +99,8 @@
       <updated>1768754112157</updated>
       <workItem from="1768754113805" duration="7215000" />
       <workItem from="1768837439882" duration="1206000" />
+      <workItem from="1769434915207" duration="601000" />
+      <workItem from="1769435714429" duration="3780000" />
     </task>
     <servers />
   </component>
